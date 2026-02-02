@@ -1,0 +1,39 @@
+# LLM Model Configuration for EXAIM
+# Environment variables can override these defaults.
+
+# MAS (Multi-Agent System)
+# Used by: CDSS demo agents (cardiology, internal_medicine, laboratory, orchestrator, radiology)
+# Purpose: Generate reasoning traces from specialized agents
+mas:
+  provider: google
+  model:  gemini-2.5-flash-lite
+  streaming: true
+  # Env overrides: MAS_LLM_PROVIDER, MAS_LLM_MODEL
+
+# Summarizer - Clinical Summary Generation
+# Used by: SummarizerAgent
+# Purpose: Generate structured clinical summaries from agent traces
+summarizer:
+  provider: huggingface
+  model: google/medgemma-1.5-4b-it
+  streaming: true
+  # Env overrides: SUMMARIZER_LLM_PROVIDER, SUMMARIZER_LLM_MODEL
+
+# Buffer Agent - Trace Trigger Decision
+# Used by: BufferAgent
+# Purpose: Decide when to trigger summarization based on trace completeness and novelty
+buffer_agent:
+  provider: huggingface
+  model: google/medgemma-1.5-4b-it
+  streaming: true
+  # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL
+
+
+
+
+
+
+
+
+
+
