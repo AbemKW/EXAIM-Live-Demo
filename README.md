@@ -1,3 +1,13 @@
+---
+title: EXAIM - Clinical Decision Support Demo
+emoji: 🏥
+colorFrom: blue
+colorTo: green
+sdk: gradio
+sdk_version: "5.9.1"
+app_file: app_gradio.py
+pinned: false
+---
 
 # EXAIM – MedGemma Impact Challenge Submission
 
