@@ -503,35 +503,31 @@ with gr.Blocks(title="EXAIM - Clinical Decision Support Demo") as demo:
         )
 
 
-if __name__ == "__main__":
-    print("🚀 Starting EXAIM Gradio Demo...")
-    print("📍 This app will be available at http://localhost:7860")
-    print("🌐 For Hugging Face Spaces deployment, this will auto-configure")
-    
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=False,  # Set to True for temporary public link
-        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo"),
-        css=custom_css,
-        # Add custom JavaScript for auto-scrolling all panels
-        js="""
-        function autoScroll() {
-            const rawOutput = document.getElementById('raw_output');
-            const summaryOutput = document.getElementById('summary_output');
-            const carouselOutput = document.getElementById('carousel_output');
-            
-            if (rawOutput) {
-                rawOutput.scrollTop = rawOutput.scrollHeight;
-            }
-            if (summaryOutput) {
-                summaryOutput.scrollTop = summaryOutput.scrollHeight;
-            }
-            if (carouselOutput) {
-                carouselOutput.scrollTop = carouselOutput.scrollHeight;
-            }
+# Configure the demo for both local and Spaces deployment
+demo.launch(
+    server_name="0.0.0.0",
+    server_port=7860,
+    share=False,  # Set to True for temporary public link
+    theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo"),
+    css=custom_css,
+    # Add custom JavaScript for auto-scrolling all panels
+    js="""
+    function autoScroll() {
+        const rawOutput = document.getElementById('raw_output');
+        const summaryOutput = document.getElementById('summary_output');
+        const carouselOutput = document.getElementById('carousel_output');
+        
+        if (rawOutput) {
+            rawOutput.scrollTop = rawOutput.scrollHeight;
         }
-        // Call autoScroll periodically to keep all panels scrolled to bottom
-        setInterval(autoScroll, 500);
-        """
-    )
+        if (summaryOutput) {
+            summaryOutput.scrollTop = summaryOutput.scrollHeight;
+        }
+        if (carouselOutput) {
+            carouselOutput.scrollTop = carouselOutput.scrollHeight;
+        }
+    }
+    // Call autoScroll periodically to keep all panels scrolled to bottom
+    setInterval(autoScroll, 500);
+    """
+)
