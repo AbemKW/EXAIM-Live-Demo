@@ -389,7 +389,11 @@ custom_css = """
 }
 """
 
-with gr.Blocks(title="EXAIM - Clinical Decision Support Demo") as demo:
+with gr.Blocks(
+    title="EXAIM - Clinical Decision Support Demo",
+    theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo"),
+    css=custom_css
+) as demo:
     
     gr.Markdown("""
     # 🏥 EXAIM: Explainable AI Medical Decision Support
@@ -503,31 +507,11 @@ with gr.Blocks(title="EXAIM - Clinical Decision Support Demo") as demo:
         )
 
 
-# Configure the demo for both local and Spaces deployment
-demo.launch(
-    server_name="0.0.0.0",
-    server_port=7860,
-    share=False,  # Set to True for temporary public link
-    theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo"),
-    css=custom_css,
-    # Add custom JavaScript for auto-scrolling all panels
-    js="""
-    function autoScroll() {
-        const rawOutput = document.getElementById('raw_output');
-        const summaryOutput = document.getElementById('summary_output');
-        const carouselOutput = document.getElementById('carousel_output');
-        
-        if (rawOutput) {
-            rawOutput.scrollTop = rawOutput.scrollHeight;
-        }
-        if (summaryOutput) {
-            summaryOutput.scrollTop = summaryOutput.scrollHeight;
-        }
-        if (carouselOutput) {
-            carouselOutput.scrollTop = carouselOutput.scrollHeight;
-        }
-    }
-    // Call autoScroll periodically to keep all panels scrolled to bottom
-    setInterval(autoScroll, 500);
-    """
-)
+# For Hugging Face Spaces, the demo object is automatically served
+# For local development, uncomment the lines below:
+if __name__ == "__main__":
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=False
+    )
