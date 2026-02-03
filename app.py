@@ -220,29 +220,41 @@ def process_case_gradio(case_text: str):
     # Flag to track if we're done
     processing_complete = False
     
-    def background_processor():
-        """Run the CDSS in a background thread"""
+    async def async_processor():
+        """Run the CDSS asynchronously"""
         nonlocal processing_complete
         try:
             print("🚀 Starting CDSS analysis...")
             
-            # Initialize CDSS with callbacks
-            cdss = CDSS(
-                trace_callback=streaming_handler.trace_callback,
-                summary_callback=streaming_handler.summary_callback
-            )
+            # Initialize CDSS
+            cdss = CDSS()
             
-            # Run the analysis (synchronously in this thread)
-            result = cdss.analyze_case(case_text)
+            # Register callbacks with EXAIM
+            cdss.exaim.register_trace_callback(streaming_handler.trace_callback)
+            cdss.exaim.register_summary_callback(streaming_handler.summary_callback)
+            
+            # Run the analysis asynchronously
+            result = await cdss.process_case(case_text)
             
             print(f"✅ CDSS completed with {len(streaming_handler.summaries)} summaries")
             
         except Exception as e:
             print(f"❌ Error in background processor: {str(e)}")
+            import traceback
+            traceback.print_exc()
             streaming_handler.error = str(e)
         finally:
             streaming_handler.processing = False
             processing_complete = True
+    
+    def background_processor():
+        """Run the async processor in a background thread with asyncio"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(async_processor())
+        finally:
+            loop.close()
     
     # Start background thread
     thread = threading.Thread(target=background_processor, daemon=True)
