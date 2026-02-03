@@ -502,10 +502,45 @@ custom_css = """
 }
 """
 
+# JavaScript for auto-scrolling the Raw MAS output
+auto_scroll_js = """
+<script>
+function autoScrollRawOutput() {
+    const rawOutput = document.getElementById('raw_output');
+    if (rawOutput) {
+        // Scroll to bottom smoothly
+        rawOutput.scrollTop = rawOutput.scrollHeight;
+    }
+}
+
+// Create a MutationObserver to watch for changes in raw_output
+const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+        if (mutation.target.id === 'raw_output' || mutation.target.closest('#raw_output')) {
+            autoScrollRawOutput();
+        }
+    });
+});
+
+// Start observing when the page loads
+window.addEventListener('load', () => {
+    const rawOutput = document.getElementById('raw_output');
+    if (rawOutput) {
+        observer.observe(rawOutput, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+    }
+});
+</script>
+"""
+
 with gr.Blocks(
     title="EXAIM - Clinical Decision Support Demo",
     theme=gr.themes.Default(primary_hue="blue", secondary_hue="cyan"),
-    css=custom_css
+    css=custom_css,
+    head=auto_scroll_js
 ) as demo:
     
     gr.Markdown("""

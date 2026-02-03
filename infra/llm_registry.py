@@ -219,7 +219,9 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         kwargs = {
             "model": model or os.getenv("GOOGLE_MODEL_NAME", "gemini-2.5-flash-lite"),
             "google_api_key": os.getenv("GOOGLE_API_KEY"),
-            "streaming": streaming
+            "streaming": streaming,
+            "timeout": 30,  # 30 second timeout
+            "max_retries": 2  # Reduce retries for faster failures
         }
         if temperature is not None:
             kwargs["temperature"] = temperature

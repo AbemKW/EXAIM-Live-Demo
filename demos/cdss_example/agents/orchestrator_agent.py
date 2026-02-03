@@ -74,6 +74,9 @@ class OrchestratorAgent(DemoBaseAgent):
     
     async def stream(self, input: str) -> AsyncIterator[str]:
         """Stream LLM output to MAS graph and EXAIM."""
+        import time
+        start_time = time.time()
+        first_token_time = None
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", self.system_prompt),
@@ -85,6 +88,11 @@ class OrchestratorAgent(DemoBaseAgent):
         try:
             # LIVE token streaming loop
             async for chunk in chain.astream({}):
+                if first_token_time is None:
+                    first_token_time = time.time()
+                    ttft = first_token_time - start_time
+                    print(f"⏱️  {self.agent_id} - Time to first token: {ttft:.2f}s")
+                
                 # Debug raw chunk to help identify safety/moderation labels
                 logger.debug("LLM stream chunk: %r", chunk)
 
@@ -104,6 +112,9 @@ class OrchestratorAgent(DemoBaseAgent):
 
                 # 2. Yield token to MAS graph
                 yield token
+            
+            total_time = time.time() - start_time
+            print(f"⏱️  {self.agent_id} - Total generation time: {total_time:.2f}s")
 
         except ValueError as e:
             # Handle fallback (rare, but needed)
