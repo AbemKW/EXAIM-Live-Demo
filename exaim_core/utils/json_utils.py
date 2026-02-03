@@ -9,9 +9,10 @@ def extract_json_from_text(text: str) -> Optional[dict]:
     """Extract JSON object from text output.
     
     Tries multiple strategies:
-    1. Find JSON between ```json markers
-    2. Find first complete JSON object in text
-    3. Extract from markdown code blocks
+    1. Clean special tokens and thought markers
+    2. Find JSON between ```json markers
+    3. Find first complete JSON object in text
+    4. Extract from markdown code blocks
     
     Args:
         text: Text content that may contain JSON
@@ -19,6 +20,11 @@ def extract_json_from_text(text: str) -> Optional[dict]:
     Returns:
         Parsed JSON dictionary if found, None otherwise
     """
+    # Pre-processing: Remove special tokens and thought markers that may appear before JSON
+    # Common patterns: <unused94>, <thought>, etc.
+    text = re.sub(r'<unused\d+>', '', text)
+    text = re.sub(r'</?thought>', '', text)
+    
     # Strategy 1: Look for ```json ... ``` blocks
     json_match = re.search(r'```(?:json)?\s*\n?(\{.*?\})\s*\n?```', text, re.DOTALL)
     if json_match:
