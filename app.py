@@ -45,7 +45,11 @@ class GradioStreamingHandler:
     def summary_callback(self, summary: AgentSummary):
         """Callback for receiving summaries"""
         print(f"🎯 GRADIO CALLBACK: Received summary #{len(self.summaries) + 1}")
-        print(f"   Status: {summary.status_action[:50]}...")
+        if summary and hasattr(summary, 'status_action'):
+            print(f"   Status: {summary.status_action[:50] if len(summary.status_action) > 50 else summary.status_action}")
+            print(f"   Key Findings: {summary.key_findings}")
+        else:
+            print(f"   Warning: Summary object is {summary}")
         self.summaries.append(summary)
     
     def get_agent_outputs(self) -> dict:
@@ -384,43 +388,123 @@ Physical Exam:
 ]
 
 
-# Custom CSS for better styling
+# Custom CSS for better styling and visibility
 custom_css = """
-#raw_output, #summary_output, #carousel_output {
-    min-height: 400px;
-    max-height: 600px;
-    overflow-y: auto;
-    padding: 20px;
-    border-radius: 8px;
-    background: linear-gradient(to bottom, #f8f9fa, #ffffff);
+/* Fixed height containers with equal sizing */
+#raw_output, #summary_output {
+    min-height: 600px !important;
+    max-height: 600px !important;
+    height: 600px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 20px !important;
+    border-radius: 8px !important;
+    background: #1a1a1a !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #333 !important;
+}
+
+#carousel_output {
+    min-height: 300px !important;
+    max-height: 300px !important;
+    height: 300px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 20px !important;
+    border-radius: 8px !important;
+    background: #1a1a1a !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #333 !important;
+}
+
+/* Ensure parent containers don't flex */
+#raw_output > div,
+#summary_output > div,
+#carousel_output > div {
+    height: 100% !important;
 }
 
 .markdown-content {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     line-height: 1.6;
+    color: #e0e0e0 !important;
 }
 
 .markdown-content h3 {
-    color: #2c3e50;
+    color: #4fc3f7 !important;
     margin-top: 1em;
     margin-bottom: 0.5em;
 }
 
 .markdown-content strong {
-    color: #34495e;
+    color: #81c784 !important;
 }
 
 .markdown-content code {
-    background-color: #f4f4f4;
+    background-color: #2d2d2d !important;
+    color: #ff9800 !important;
     padding: 2px 6px;
     border-radius: 3px;
     font-size: 0.9em;
+}
+
+.markdown-content p {
+    color: #e0e0e0 !important;
+}
+
+.markdown-content em {
+    color: #b0b0b0 !important;
+}
+
+/* Fix for markdown content inside outputs */
+#raw_output .markdown-content,
+#summary_output .markdown-content,
+#carousel_output .markdown-content {
+    color: #e0e0e0 !important;
+}
+
+#raw_output h3,
+#summary_output h3,
+#carousel_output h3 {
+    color: #4fc3f7 !important;
+}
+
+#raw_output p,
+#summary_output p,
+#carousel_output p {
+    color: #e0e0e0 !important;
+}
+
+/* Scrollbar styling for dark theme */
+#raw_output::-webkit-scrollbar,
+#summary_output::-webkit-scrollbar,
+#carousel_output::-webkit-scrollbar {
+    width: 8px;
+}
+
+#raw_output::-webkit-scrollbar-track,
+#summary_output::-webkit-scrollbar-track,
+#carousel_output::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+#raw_output::-webkit-scrollbar-thumb,
+#summary_output::-webkit-scrollbar-thumb,
+#carousel_output::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+#raw_output::-webkit-scrollbar-thumb:hover,
+#summary_output::-webkit-scrollbar-thumb:hover,
+#carousel_output::-webkit-scrollbar-thumb:hover {
+    background: #777;
 }
 """
 
 with gr.Blocks(
     title="EXAIM - Clinical Decision Support Demo",
-    theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo"),
+    theme=gr.themes.Default(primary_hue="blue", secondary_hue="cyan"),
     css=custom_css
 ) as demo:
     
