@@ -425,7 +425,7 @@ with gr.Blocks(
 ) as demo:
     
     gr.Markdown("""
-    # 🏥 EXAIM: Explainable AI Medical Decision Support
+    # 🏥 EXAIM: Explainable AI Middleware
     
     This demo showcases EXAIM's ability to compress and summarize multi-agent clinical reasoning in real-time.
     
