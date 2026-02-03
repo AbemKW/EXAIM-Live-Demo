@@ -85,6 +85,7 @@ class HuggingFacePipelineLLM(BaseChatModel):
             # Prepare generation kwargs
             gen_kwargs = {
                 "return_full_text": False,  # Only return generated text
+                "max_new_tokens": 1024,  # Allow longer responses for complete JSON output
             }
             
             # Add temperature and sampling if specified
