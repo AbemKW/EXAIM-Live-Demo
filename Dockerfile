@@ -60,10 +60,6 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Create startup script
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
-
 # Expose port 7860 (Hugging Face Spaces default)
 EXPOSE 7860
 
@@ -77,5 +73,5 @@ ENV PORT=7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
-# Start supervisor to manage both backend and nginx
+# Start supervisor to manage all services (backend, Next.js, nginx)
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
