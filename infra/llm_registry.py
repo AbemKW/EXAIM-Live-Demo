@@ -58,106 +58,97 @@ class HuggingFacePipelineLLM(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         """Generate response using Hugging Face pipeline."""
-        
-        # Convert LangChain messages to HF pipeline format
         hf_messages = []
-        for msg in messages:
-            if isinstance(msg, SystemMessage):
-                role = "system"
-            elif isinstance(msg, HumanMessage):
-                role = "user"
-            elif isinstance(msg, AIMessage):
+        system_instruction = ""
+
+        # Normalize input messages list
+        if not messages:
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=""))])
+
+        # If first message is SystemMessage, capture and skip it
+        if isinstance(messages[0], SystemMessage):
+            system_instruction = messages[0].content
+            remaining = messages[1:]
+        else:
+            remaining = messages
+
+        for i, msg in enumerate(remaining):
+            # Map LangChain roles to HF chat roles expected by Gemma
+            if isinstance(msg, AIMessage):
                 role = "assistant"
             else:
+                # Treat HumanMessage and any unknown as user
                 role = "user"
-            
-            # Handle both text and image content
-            if isinstance(msg.content, str):
-                hf_messages.append({"role": role, "content": msg.content})
-            elif isinstance(msg.content, list):
-                # Multi-modal content
-                hf_messages.append({"role": role, "content": msg.content})
-            else:
-                hf_messages.append({"role": role, "content": str(msg.content)})
-        
-        # Call the pipeline
+
+            content = msg.content
+
+            # Prepend system instruction to the first user message
+            if i == 0 and role == "user" and system_instruction:
+                if isinstance(content, str):
+                    content = f"{system_instruction}\n\n{content}"
+                elif isinstance(content, list):
+                    # For multimodal, insert a text block at start
+                    content.insert(0, {"type": "text", "text": system_instruction})
+
+            # Ensure content is in a HF-serializable form
+            if not isinstance(content, (str, list)):
+                content = str(content)
+
+            hf_messages.append({"role": role, "content": content})
+
+        # Edge case: only system instruction present
+        if system_instruction and not hf_messages:
+            hf_messages.append({"role": "user", "content": system_instruction})
+
+        # --- CORRECTION 2: Pipeline Invocation and Extraction ---
         try:
-            # Prepare generation kwargs
             gen_kwargs = {
-                "return_full_text": False,  # Only return generated text
-                "max_new_tokens": 2048,  # Sufficient for complete JSON responses
+                "max_new_tokens": 2048,
             }
-            
-            # Add temperature and sampling if specified
+
             if self.temperature is not None and self.temperature > 0:
                 gen_kwargs["temperature"] = self.temperature
                 gen_kwargs["do_sample"] = True
-            
-            # Determine how to call the pipeline based on task type
-            task = getattr(self.pipeline, 'task', 'text-generation')
-            
-            if task == 'image-text-to-text':
-                # Image-text-to-text pipeline - use text parameter
-                result = self.pipeline(text=hf_messages, **gen_kwargs)
             else:
-                # Standard text-generation pipeline - pass messages directly
-                # The pipeline expects either a string or list of chat messages
-                result = self.pipeline(hf_messages, **gen_kwargs)
-            
-            # Log debug information
-            logger.debug(f"HF Pipeline Task: {task}")
-            logger.debug(f"HF Pipeline Result Type: {type(result)}")
-            if isinstance(result, list) and len(result) > 0:
-                logger.debug(f"HF Result[0] Type: {type(result[0])}")
-                logger.debug(f"HF Result[0] Keys: {result[0].keys() if isinstance(result[0], dict) else 'N/A'}")
-            
-            # Extract text from result
-            # For chat/conversational models, result is typically:
-            # [{'generated_text': [{'role': 'user', 'content': '...'}, {'role': 'assistant', 'content': '...'}]}]
-            # or [{'generated_text': 'some text'}]
+                gen_kwargs["do_sample"] = False
+
+            # Call the pipeline. The 'image-text-to-text' pipeline accepts
+            # a list of chat dicts for Gemma-style models.
+            result = self.pipeline(hf_messages, **gen_kwargs)
+
+            # Robust extraction of generated text
+            text_output = ""
             if isinstance(result, list) and len(result) > 0:
                 item = result[0]
-                
-                if isinstance(item, dict):
-                    generated = item.get('generated_text', item)
-                    
-                    # If generated_text is a list of messages (chat format)
-                    if isinstance(generated, list) and len(generated) > 0:
-                        # Find the last assistant message
-                        for msg in reversed(generated):
-                            if isinstance(msg, dict) and msg.get('role') == 'assistant':
-                                text = msg.get('content', str(msg))
+                if isinstance(item, dict) and "generated_text" in item:
+                    gen_text = item["generated_text"]
+                    if isinstance(gen_text, list) and len(gen_text) > 0:
+                        # Try to get last assistant message
+                        for msg in reversed(gen_text):
+                            if isinstance(msg, dict) and msg.get("role") in ("assistant", "model"):
+                                text_output = msg.get("content", str(msg))
                                 break
                         else:
-                            # No assistant message found, use last message
-                            if isinstance(generated[-1], dict):
-                                text = generated[-1].get('content', str(generated[-1]))
-                            else:
-                                text = str(generated[-1])
-                    elif isinstance(generated, str):
-                        text = generated
+                            # Fallback to last element
+                            last = gen_text[-1]
+                            text_output = last.get("content", str(last)) if isinstance(last, dict) else str(last)
                     else:
-                        text = str(generated)
-                elif isinstance(item, str):
-                    text = item
+                        # generated_text is a string
+                        text_output = gen_text if isinstance(gen_text, str) else str(gen_text)
+                elif isinstance(item, dict) and "text" in item:
+                    text_output = item.get("text", "")
                 else:
-                    text = str(item)
+                    text_output = str(item)
             else:
-                text = str(result)
-            
-            logger.debug(f"HF Extracted Text (first 200 chars): {text[:200]}")
-            
-            message = AIMessage(content=text)
-            generation = ChatGeneration(message=message)
-            return ChatResult(generations=[generation])
+                text_output = str(result)
+
+            message = AIMessage(content=text_output)
+            return ChatResult(generations=[ChatGeneration(message=message)])
         except Exception as e:
             logger.error(f"Error in HuggingFacePipelineLLM._generate: {e}")
             logger.exception("Full traceback:")
             warnings.warn(f"HuggingFace pipeline error: {e}")
-            # Return error message
-            message = AIMessage(content=f"Error: {str(e)}")
-            generation = ChatGeneration(message=message)
-            return ChatResult(generations=[generation])
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=f"Error: {str(e)}"))])
     
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
@@ -281,18 +272,16 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         # Model selection: prefer explicit model argument, then env var, default to medgemma
         model_name = model or os.getenv("HUGGINGFACE_MODEL", "google/medgemma-1.5-4b-it")
         
-        # Determine task type - for text-only use, we should use text-generation
-        # image-text-to-text requires image inputs
-        task = os.getenv("HUGGINGFACE_TASK", "text-generation")
-        if "medgemma" in model_name.lower() and task == "image-text-to-text":
-            # MedGemma supports multimodal, but for text-only tasks use text-generation
-            logger.warning(f"Using text-generation task for {model_name} (image-text-to-text requires images)")
-            task = "text-generation"
+        # MedGemma / Gemma-3 architecture is multimodal and requires
+        # the 'image-text-to-text' task even for text-only inputs.
+        task = os.getenv("HUGGINGFACE_TASK", "image-text-to-text")
         
         # Create pipeline with device_map for automatic GPU support
         pipe_kwargs = {
             "model": model_name,
             "device_map": "auto",
+            "torch_dtype": "auto",
+            "trust_remote_code": True,
         }
         
         try:
