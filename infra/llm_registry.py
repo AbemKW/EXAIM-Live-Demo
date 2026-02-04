@@ -126,9 +126,10 @@ class HuggingFacePipelineLLM(BaseChatModel):
                 input_debug = input_debug[:200] + "..."
             logger.debug(f"HF Pipeline Input: {input_debug}")
 
-            # Call pipeline using the official docs format: pipe(text=messages, ...)
-            # The pipeline will apply the chat template automatically
-            result = self.pipeline(text=hf_messages, **gen_kwargs)
+            # Call pipeline - text-generation pipeline expects messages directly
+            # Note: The official docs use pipe(text=messages, ...) but the actual
+            # transformers text-generation pipeline expects it as first positional arg
+            result = self.pipeline(hf_messages, **gen_kwargs)
             
             # Log raw result type/len
             logger.debug(f"HF Pipeline Result Type: {type(result)}")
