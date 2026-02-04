@@ -112,9 +112,17 @@ class HuggingFacePipelineLLM(BaseChatModel):
             else:
                 gen_kwargs["do_sample"] = False
 
-            # Call the pipeline. The 'image-text-to-text' pipeline accepts
-            # a list of chat dicts for Gemma-style models.
-            result = self.pipeline(hf_messages, **gen_kwargs)
+            # Call the pipeline. 
+            # Optimization: If we have a single user message with string content, 
+            # pass it directly to avoid potential chat_template issues in the pipeline 
+            # (common source of "string indices must be integers" with some processors)
+            input_to_pipeline = hf_messages
+            if len(hf_messages) == 1 and hf_messages[0]["role"] == "user":
+                content = hf_messages[0]["content"]
+                if isinstance(content, str):
+                    input_to_pipeline = content
+
+            result = self.pipeline(input_to_pipeline, **gen_kwargs)
 
             # Robust extraction of generated text
             text_output = ""
