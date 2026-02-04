@@ -208,10 +208,19 @@ class HuggingFacePipelineLLM(BaseChatModel):
         the async event loop when used in async contexts (FastAPI, Gradio, etc).
         """
         import asyncio
-        # Run blocking _generate in thread to avoid blocking event loop
-        result = await asyncio.to_thread(
-            self._generate, messages, stop, run_manager, **kwargs
-        )
+        import sys
+        
+        # Python 3.9+ has asyncio.to_thread, older versions need run_in_executor
+        if sys.version_info >= (3, 9):
+            result = await asyncio.to_thread(
+                self._generate, messages, stop, run_manager, **kwargs
+            )
+        else:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,  # Use default ThreadPoolExecutor
+                lambda: self._generate(messages, stop, run_manager, **kwargs)
+            )
         return result
     
     @property

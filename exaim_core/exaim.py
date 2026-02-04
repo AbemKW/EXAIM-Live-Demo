@@ -170,25 +170,46 @@ class EXAIM:
         flush_reason: str | None = None
     ) -> Optional[AgentSummary]:
         """Process a chunk of text for summarization."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"[EXAIM] Processing chunk for {agent_id}, flush_reason={flush_reason}, chunk_length={len(chunk)}")
+        
         previous_summaries = self._get_limited_history(summaries)
-        trigger = await self.buffer_agent.addsegment(
-            agent_id,
-            chunk,
-            previous_summaries,
-            flush_reason=flush_reason,
-            history_k=self.history_k
-        )
+        
+        try:
+            trigger = await self.buffer_agent.addsegment(
+                agent_id,
+                chunk,
+                previous_summaries,
+                flush_reason=flush_reason,
+                history_k=self.history_k
+            )
+            logger.info(f"[EXAIM] Buffer agent returned trigger={trigger} for {agent_id}")
+        except Exception as e:
+            logger.error(f"[EXAIM] Buffer agent failed for {agent_id}: {e}", exc_info=True)
+            return None
+            
         if trigger:
             # Flush returns deferred tail + current buffer content.
             agent_segments = self.buffer_agent.flush()
+            logger.info(f"[EXAIM] Trigger activated, flushed {len(agent_segments)} segments, calling summarizer...")
+            
             summary_history_strs = self._get_limited_history(summaries[:-1])
             latest_summary_str = self._format_summary_for_history(summaries[-1]) if summaries else "No summaries yet."
-            summary = await self.summarizer_agent.summarize(
-                agent_segments,
-                summary_history_strs,
-                latest_summary_str,
-                self.history_k
-            )
+            
+            try:
+                summary = await self.summarizer_agent.summarize(
+                    agent_segments,
+                    summary_history_strs,
+                    latest_summary_str,
+                    self.history_k
+                )
+                logger.info(f"[EXAIM] Summarizer completed successfully")
+            except Exception as e:
+                logger.error(f"[EXAIM] Summarizer failed: {e}", exc_info=True)
+                return None
+                
             if summary is not None:
                 self.summaries.append(summary)
                 self._print_summary(summary)
