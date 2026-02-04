@@ -110,15 +110,23 @@ class HuggingFacePipelineLLM(BaseChatModel):
 
         # --- Pipeline Invocation following official MedGemma docs ---
         try:
-            gen_kwargs = {
-                "max_new_tokens": 2048,
-            }
-
+            # Build generation kwargs - only include non-default parameters
+            # to avoid conflicts with model's generation_config
+            gen_kwargs = {}
+            
+            # Set max_new_tokens (required)
+            gen_kwargs["max_new_tokens"] = 2048
+            
+            # Temperature and sampling
             if self.temperature is not None and self.temperature > 0:
                 gen_kwargs["temperature"] = self.temperature
                 gen_kwargs["do_sample"] = True
             else:
                 gen_kwargs["do_sample"] = False
+            
+            # Ensure we don't pass conflicting parameters
+            # Remove max_length if it exists to avoid conflict with max_new_tokens
+            gen_kwargs["max_length"] = None
 
             # Log the input for debugging (truncated)
             input_debug = str(hf_messages)
