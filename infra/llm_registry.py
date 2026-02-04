@@ -325,13 +325,9 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         # Model selection: prefer explicit model argument, then env var, default to medgemma 27B text-only
         model_name = model or os.getenv("HUGGINGFACE_MODEL", "google/medgemma-27b-text-it")
         
-        # Determine task based on model architecture:
-        # - MedGemma 2.0+ (multimodal) requires 'image-text-to-text'
-        # - MedGemma 1.5 and earlier (text-only) requires 'text-generation'
-        if "medgemma-2" in model_name.lower() or os.getenv("HUGGINGFACE_TASK") == "image-text-to-text":
-            task = "image-text-to-text"
-        else:
-            task = os.getenv("HUGGINGFACE_TASK", "text-generation")
+        # MedGemma 27B is text-only, uses 'text-generation' task
+        # TODO: Add multimodal model detection in the future if needed
+        task = os.getenv("HUGGINGFACE_TASK", "text-generation")
         
         # Check cache explicitly
         cache_key = f"{model_name}:{task}"
