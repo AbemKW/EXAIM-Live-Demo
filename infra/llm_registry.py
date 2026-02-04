@@ -159,6 +159,8 @@ class HuggingFacePipelineLLM(BaseChatModel):
 # Lazy loading: Don't load configs or instantiate registry at import time
 _CONFIG_PATH = Path(__file__).parent / "model_configs.yaml"
 _DEFAULT_CONFIGS = None
+# Cache for HuggingFace pipelines to prevent double loading (OOM)
+_HF_PIPELINE_CACHE = {}
 
 
 def _load_default_configs():
@@ -276,21 +278,29 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         # the 'image-text-to-text' task even for text-only inputs.
         task = os.getenv("HUGGINGFACE_TASK", "image-text-to-text")
         
-        # Create pipeline with device_map for automatic GPU support
-        pipe_kwargs = {
-            "model": model_name,
-            "device_map": "auto",
-            "torch_dtype": "auto",
-            "trust_remote_code": True,
-        }
+        # Check cache explicitly
+        cache_key = f"{model_name}:{task}"
         
-        try:
-            logger.info(f"Loading HuggingFace pipeline: task={task}, model={model_name}")
-            pipe = hf_pipeline(task, **pipe_kwargs)
-            logger.info("Successfully loaded HuggingFace pipeline")
-        except Exception as e:
-            logger.error(f"Error loading HuggingFace pipeline: {e}")
-            raise
+        if cache_key in _HF_PIPELINE_CACHE:
+            logger.info(f"Using cached HuggingFace pipeline for: {cache_key}")
+            pipe = _HF_PIPELINE_CACHE[cache_key]
+        else:
+            # Create pipeline with device_map for automatic GPU support
+            pipe_kwargs = {
+                "model": model_name,
+                "device_map": "auto",
+                "torch_dtype": "auto",
+                "trust_remote_code": True,
+            }
+            
+            try:
+                logger.info(f"Loading HuggingFace pipeline: task={task}, model={model_name}")
+                pipe = hf_pipeline(task, **pipe_kwargs)
+                _HF_PIPELINE_CACHE[cache_key] = pipe
+                logger.info("Successfully loaded HuggingFace pipeline")
+            except Exception as e:
+                logger.error(f"Error loading HuggingFace pipeline: {e}")
+                raise
         
         return HuggingFacePipelineLLM(
             pipeline=pipe,
