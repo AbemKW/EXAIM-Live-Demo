@@ -1,26 +1,21 @@
 # Evaluation files - not needed for live demo
 evals/
 
-# Frontend/Backend demos - separate from Gradio
-demos/frontend/
-demos/backend/
+# CDSS example - not needed for live demo  
 demos/cdss_example/
 
-# Binary files
-*.png
+# Binary files (except logos needed for frontend)
 *.pdf
 *.jpg
 *.jpeg
 *.gif
-*.ico
 
-# Docker files
-Dockerfile*
-docker-compose*
+# Docker files for evals only (not main Dockerfile)
+Dockerfile.evals
+docker-compose.evals.yml
 
-# Development scripts
+# Development scripts (except start.sh for Docker)
 start-dev.ps1
-*.sh
 
 # Documentation not needed for space
 docs/

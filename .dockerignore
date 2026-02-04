@@ -1,0 +1,79 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.gitmodules
+
+# Node modules (will be built in Docker)
+node_modules/
+demos/frontend/node_modules/
+
+# Next.js
+demos/frontend/.next/
+demos/frontend/out/
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Evaluation data (not needed for live demo)
+evals/
+Dockerfile.evals
+docker-compose.evals.yml
+
+# Gradio files (migrating away from)
+app_gradio.py
+*_gradio.py
+requirements-gradio.txt
+start-gradio.*
+GRADIO_*.md
+README_GRADIO.md
+
+# Development scripts
+start-dev.ps1
+*.ps1
+*.sh
+
+# Streamlit (if exists)
+.streamlit/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Debug files
+latest-run-debug.txt
+debug*.txt
