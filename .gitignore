@@ -1,0 +1,42 @@
+# Evaluation files - not needed for live demo
+evals/
+
+# Frontend/Backend demos - separate from Gradio
+demos/frontend/
+demos/backend/
+demos/cdss_example/
+
+# Binary files
+*.png
+*.pdf
+*.jpg
+*.jpeg
+*.gif
+*.ico
+
+# Docker files
+Dockerfile*
+docker-compose*
+
+# Development scripts
+start-dev.ps1
+*.sh
+
+# Documentation not needed for space
+docs/
+GRADIO_DEPLOYMENT.md
+HF_DEPLOYMENT_CHECKLIST.md
+README_GRADIO.md
+
+# Build artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# GCP credentials
+*.json
+
+# Third party
+third_party/
+
+.env

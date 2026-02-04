@@ -195,6 +195,25 @@ class HuggingFacePipelineLLM(BaseChatModel):
             warnings.warn(f"HuggingFace pipeline error: {e}")
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content=f"Error: {str(e)}"))])
     
+    async def _agenerate(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Async generation - offloads blocking pipeline to thread pool.
+        
+        This prevents the synchronous HuggingFace pipeline from blocking
+        the async event loop when used in async contexts (FastAPI, Gradio, etc).
+        """
+        import asyncio
+        # Run blocking _generate in thread to avoid blocking event loop
+        result = await asyncio.to_thread(
+            self._generate, messages, stop, run_manager, **kwargs
+        )
+        return result
+    
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
         """Get identifying parameters."""
