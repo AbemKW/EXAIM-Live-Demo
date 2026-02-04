@@ -112,21 +112,16 @@ class HuggingFacePipelineLLM(BaseChatModel):
         try:
             # Build generation kwargs - only include non-default parameters
             # to avoid conflicts with model's generation_config
-            gen_kwargs = {}
+            gen_kwargs = {
+                "max_new_tokens": 2048,
+                "return_full_text": False,  # Only return new tokens, not the input
+            }
             
-            # Set max_new_tokens (required)
-            gen_kwargs["max_new_tokens"] = 2048
-            
-            # Temperature and sampling
+            # Only add temperature/sampling if temperature > 0
+            # Don't set do_sample=False as it conflicts with generation_config
             if self.temperature is not None and self.temperature > 0:
-                gen_kwargs["temperature"] = self.temperature
                 gen_kwargs["do_sample"] = True
-            else:
-                gen_kwargs["do_sample"] = False
-            
-            # Ensure we don't pass conflicting parameters
-            # Remove max_length if it exists to avoid conflict with max_new_tokens
-            gen_kwargs["max_length"] = None
+                gen_kwargs["temperature"] = self.temperature
 
             # Log the input for debugging (truncated)
             input_debug = str(hf_messages)
