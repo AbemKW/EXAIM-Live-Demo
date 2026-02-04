@@ -59,22 +59,27 @@ class HuggingFacePipelineLLM(BaseChatModel):
     ) -> ChatResult:
         """Generate response using Hugging Face pipeline."""
         hf_messages = []
-        system_instruction = ""
 
         # Normalize input messages list
         if not messages:
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content=""))])
 
-        # If first message is SystemMessage, capture and skip it
+        # Check if model supports native system role (MedGemma 27B does, older models may not)
+        supports_system_role = "medgemma-27b" in self.model_name.lower() or "gemma-3" in self.model_name.lower()
+        system_instruction = ""
+
+        # Extract system message if present
+        start_idx = 0
         if isinstance(messages[0], SystemMessage):
             system_instruction = messages[0].content
-            remaining = messages[1:]
-        else:
-            remaining = messages
+            start_idx = 1
 
-        for i, msg in enumerate(remaining):
-            # Map LangChain roles to HF chat roles expected by Gemma
-            if isinstance(msg, AIMessage):
+        # Convert messages to HF format
+        for msg in messages[start_idx:]:
+            # Map LangChain roles to HF chat roles
+            if isinstance(msg, SystemMessage):
+                role = "system"
+            elif isinstance(msg, AIMessage):
                 role = "assistant"
             else:
                 # Treat HumanMessage and any unknown as user
@@ -82,25 +87,28 @@ class HuggingFacePipelineLLM(BaseChatModel):
 
             content = msg.content
 
-            # Prepend system instruction to the first user message
-            if i == 0 and role == "user" and system_instruction:
-                if isinstance(content, str):
-                    content = f"{system_instruction}\n\n{content}"
-                elif isinstance(content, list):
-                    # For multimodal, insert a text block at start
-                    content.insert(0, {"type": "text", "text": system_instruction})
-
             # Ensure content is in a HF-serializable form
             if not isinstance(content, (str, list)):
                 content = str(content)
 
             hf_messages.append({"role": role, "content": content})
 
-        # Edge case: only system instruction present
-        if system_instruction and not hf_messages:
-            hf_messages.append({"role": "user", "content": system_instruction})
+        # For models that don't support system role, prepend to first user message
+        if system_instruction and not supports_system_role:
+            if hf_messages and hf_messages[0]["role"] == "user":
+                content = hf_messages[0]["content"]
+                if isinstance(content, str):
+                    hf_messages[0]["content"] = f"{system_instruction}\n\n{content}"
+                elif isinstance(content, list):
+                    content.insert(0, {"type": "text", "text": system_instruction})
+            else:
+                # No user message, add system as user message
+                hf_messages.insert(0, {"role": "user", "content": system_instruction})
+        elif system_instruction and supports_system_role:
+            # Add system message at the beginning for models that support it
+            hf_messages.insert(0, {"role": "system", "content": system_instruction})
 
-        # --- CORRECTION 2: Pipeline Invocation and Extraction ---
+        # --- Pipeline Invocation following official MedGemma docs ---
         try:
             gen_kwargs = {
                 "max_new_tokens": 2048,
@@ -112,70 +120,40 @@ class HuggingFacePipelineLLM(BaseChatModel):
             else:
                 gen_kwargs["do_sample"] = False
 
-            # Call the pipeline. 
-            # Optimization: If we have a single user message, pass it as a string.
-            # We attempt to apply the chat template so the model recognizes it as an instruction.
-            input_to_pipeline = hf_messages
-            if len(hf_messages) == 1 and hf_messages[0]["role"] == "user":
-                content = hf_messages[0]["content"]
-                if isinstance(content, str):
-                    formatted = False
-                    # Try to apply chat template relative to the model
-                    if hasattr(self.pipeline, "tokenizer") and self.pipeline.tokenizer:
-                         try:
-                            # Check if tokenizer has a chat template
-                            if getattr(self.pipeline.tokenizer, "chat_template", None):
-                                chat = [{"role": "user", "content": content}]
-                                content = self.pipeline.tokenizer.apply_chat_template(
-                                    chat, 
-                                    tokenize=False, 
-                                    add_generation_prompt=True
-                                )
-                                formatted = True
-                         except Exception:
-                            # Template application failed, ignore
-                            pass
-                    
-                    if not formatted:
-                         # Fallback for Gemma/MedGemma if no template found
-                         # This manual formatting helps ensuring the model treats it as a turn
-                         if "gemma" in self.model_name.lower():
-                            content = f"<start_of_turn>user\n{content}<end_of_turn>\n<start_of_turn>model\n"
-
-                    input_to_pipeline = content
-
             # Log the input for debugging (truncated)
-            input_debug = str(input_to_pipeline)
-            if len(input_debug) > 200:
+            input_debug = str(hf_messages)
+            if len(input_debug) > 100:
                 input_debug = input_debug[:200] + "..."
             logger.debug(f"HF Pipeline Input: {input_debug}")
 
-            result = self.pipeline(input_to_pipeline, **gen_kwargs)
+            # Call pipeline using the official docs format: pipe(text=messages, ...)
+            # The pipeline will apply the chat template automatically
+            result = self.pipeline(text=hf_messages, **gen_kwargs)
             
             # Log raw result type/len
             logger.debug(f"HF Pipeline Result Type: {type(result)}")
             if isinstance(result, list) and len(result) > 0:
                 logger.debug(f"HF Pipeline Result[0] keys: {result[0].keys() if isinstance(result[0], dict) else 'not a dict'}")
 
-            # Robust extraction of generated text
+            # Extract generated text following official docs pattern
+            # output[0]["generated_text"][-1]["content"]
             text_output = ""
             if isinstance(result, list) and len(result) > 0:
                 item = result[0]
                 if isinstance(item, dict) and "generated_text" in item:
                     gen_text = item["generated_text"]
                     if isinstance(gen_text, list) and len(gen_text) > 0:
-                        # Try to get last assistant message
-                        for msg in reversed(gen_text):
-                            if isinstance(msg, dict) and msg.get("role") in ("assistant", "model"):
-                                text_output = msg.get("content", str(msg))
-                                break
+                        # Get the last message (assistant's response)
+                        last_msg = gen_text[-1]
+                        if isinstance(last_msg, dict):
+                            text_output = last_msg.get("content", str(last_msg))
                         else:
-                            # Fallback to last element
-                            last = gen_text[-1]
-                            text_output = last.get("content", str(last)) if isinstance(last, dict) else str(last)
+                            text_output = str(last_msg)
+                    elif isinstance(gen_text, str):
+                        # Fallback: generated_text is a string
+                        text_output = gen_text
                     else:
-                        # generated_text is a string
-                        text_output = gen_text if isinstance(gen_text, str) else str(gen_text)
+                        text_output = str(gen_text)
                 elif isinstance(item, dict) and "text" in item:
                     text_output = item.get("text", "")
                 else:
@@ -344,12 +322,16 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                 "Install with: pip install transformers torch"
             )
         
-        # Model selection: prefer explicit model argument, then env var, default to medgemma
-        model_name = model or os.getenv("HUGGINGFACE_MODEL", "google/medgemma-1.5-4b-it")
+        # Model selection: prefer explicit model argument, then env var, default to medgemma 27B text-only
+        model_name = model or os.getenv("HUGGINGFACE_MODEL", "google/medgemma-27b-text-it")
         
-        # MedGemma / Gemma-3 architecture is multimodal and requires
-        # the 'image-text-to-text' task even for text-only inputs.
-        task = os.getenv("HUGGINGFACE_TASK", "image-text-to-text")
+        # Determine task based on model architecture:
+        # - MedGemma 2.0+ (multimodal) requires 'image-text-to-text'
+        # - MedGemma 1.5 and earlier (text-only) requires 'text-generation'
+        if "medgemma-2" in model_name.lower() or os.getenv("HUGGINGFACE_TASK") == "image-text-to-text":
+            task = "image-text-to-text"
+        else:
+            task = os.getenv("HUGGINGFACE_TASK", "text-generation")
         
         # Check cache explicitly
         cache_key = f"{model_name}:{task}"
@@ -359,10 +341,14 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             pipe = _HF_PIPELINE_CACHE[cache_key]
         else:
             # Create pipeline with device_map for automatic GPU support
+            # MedGemma 27B recommends bfloat16, other models use auto
+            import torch
+            torch_dtype = torch.bfloat16 if "medgemma-27b" in model_name.lower() else "auto"
+            
             pipe_kwargs = {
                 "model": model_name,
                 "device_map": "auto",
-                "torch_dtype": "auto",
+                "torch_dtype": torch_dtype,
                 "trust_remote_code": True,
             }
             

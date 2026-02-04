@@ -27,13 +27,3 @@ buffer_agent:
   model: google/medgemma-27b-text-it
   streaming: false
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL
-
-
-
-
-
-
-
-
-
-
