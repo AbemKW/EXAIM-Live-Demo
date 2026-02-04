@@ -141,29 +141,23 @@ class GradioStreamingHandler:
         
         # Key findings
         if latest.key_findings:
-            output.append("**🔑 Key Findings**:\n")
-            for finding in latest.key_findings:
-                output.append(f"- {finding}\n")
-            output.append("\n")
+            output.append(f"**🔑 Key Findings**: {latest.key_findings}\n\n")
         
-        # Differentials
-        if latest.differential_diagnosis:
-            output.append("**🧬 Differential Diagnosis**:\n")
-            for diff in latest.differential_diagnosis:
-                output.append(f"- {diff}\n")
-            output.append("\n")
+        # Differential & Rationale
+        if latest.differential_rationale:
+            output.append(f"**🧬 Differential & Rationale**: {latest.differential_rationale}\n\n")
+        
+        # Uncertainty/Confidence
+        if latest.uncertainty_confidence:
+            output.append(f"**📊 Uncertainty/Confidence**: {latest.uncertainty_confidence}\n\n")
         
         # Recommendations
-        if latest.recommendations:
-            output.append("**💡 Recommendations**:\n")
-            for rec in latest.recommendations:
-                output.append(f"- {rec}\n")
-            output.append("\n")
+        if latest.recommendation_next_step:
+            output.append(f"**💡 Next Step**: {latest.recommendation_next_step}\n\n")
         
-        # Metadata
-        output.append(f"\n---\n")
-        output.append(f"*Processed {latest.num_segments_processed} segments | ")
-        output.append(f"Compression: {latest.compression_ratio:.1%}*\n")
+        # Agent Contributions
+        if latest.agent_contributions:
+            output.append(f"**🤖 Agent Contributions**: {latest.agent_contributions}\n\n")
         
         return "".join(output)
     
@@ -178,13 +172,10 @@ class GradioStreamingHandler:
             output.append(f"\n---\n\n")
             output.append(f"### 📊 Summary #{idx}\n\n")
             
-            # Compact view - just key findings
+            # Compact view - just key findings (first 80 chars)
             if summary.key_findings:
-                output.append("**Key Findings**: ")
-                output.append(" | ".join(summary.key_findings[:3]))  # Show first 3
-                if len(summary.key_findings) > 3:
-                    output.append(f" (+{len(summary.key_findings) - 3} more)")
-                output.append("\n\n")
+                findings_short = summary.key_findings[:80] + "..." if len(summary.key_findings) > 80 else summary.key_findings
+                output.append(f"**Key Findings**: {findings_short}\n\n")
             
             # Status
             if summary.status_action:

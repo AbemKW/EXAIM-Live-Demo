@@ -154,6 +154,8 @@ class HuggingFacePipelineLLM(BaseChatModel):
             
             # Log raw result type/len
             logger.debug(f"HF Pipeline Result Type: {type(result)}")
+            if isinstance(result, list) and len(result) > 0:
+                logger.debug(f"HF Pipeline Result[0] keys: {result[0].keys() if isinstance(result[0], dict) else 'not a dict'}")
 
             # Robust extraction of generated text
             text_output = ""
@@ -180,6 +182,10 @@ class HuggingFacePipelineLLM(BaseChatModel):
                     text_output = str(item)
             else:
                 text_output = str(result)
+
+            # Log the extracted output for debugging
+            output_preview = text_output[:500] if len(text_output) > 500 else text_output
+            logger.info(f"HF Pipeline Generated Text Preview: {output_preview}")
 
             message = AIMessage(content=text_output)
             return ChatResult(generations=[ChatGeneration(message=message)])
