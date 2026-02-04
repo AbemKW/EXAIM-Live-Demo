@@ -113,16 +113,47 @@ class HuggingFacePipelineLLM(BaseChatModel):
                 gen_kwargs["do_sample"] = False
 
             # Call the pipeline. 
-            # Optimization: If we have a single user message with string content, 
-            # pass it directly to avoid potential chat_template issues in the pipeline 
-            # (common source of "string indices must be integers" with some processors)
+            # Optimization: If we have a single user message, pass it as a string.
+            # We attempt to apply the chat template so the model recognizes it as an instruction.
             input_to_pipeline = hf_messages
             if len(hf_messages) == 1 and hf_messages[0]["role"] == "user":
                 content = hf_messages[0]["content"]
                 if isinstance(content, str):
+                    formatted = False
+                    # Try to apply chat template relative to the model
+                    if hasattr(self.pipeline, "tokenizer") and self.pipeline.tokenizer:
+                         try:
+                            # Check if tokenizer has a chat template
+                            if getattr(self.pipeline.tokenizer, "chat_template", None):
+                                chat = [{"role": "user", "content": content}]
+                                content = self.pipeline.tokenizer.apply_chat_template(
+                                    chat, 
+                                    tokenize=False, 
+                                    add_generation_prompt=True
+                                )
+                                formatted = True
+                         except Exception:
+                            # Template application failed, ignore
+                            pass
+                    
+                    if not formatted:
+                         # Fallback for Gemma/MedGemma if no template found
+                         # This manual formatting helps ensuring the model treats it as a turn
+                         if "gemma" in self.model_name.lower():
+                            content = f"<start_of_turn>user\n{content}<end_of_turn>\n<start_of_turn>model\n"
+
                     input_to_pipeline = content
 
+            # Log the input for debugging (truncated)
+            input_debug = str(input_to_pipeline)
+            if len(input_debug) > 200:
+                input_debug = input_debug[:200] + "..."
+            logger.debug(f"HF Pipeline Input: {input_debug}")
+
             result = self.pipeline(input_to_pipeline, **gen_kwargs)
+            
+            # Log raw result type/len
+            logger.debug(f"HF Pipeline Result Type: {type(result)}")
 
             # Robust extraction of generated text
             text_output = ""
