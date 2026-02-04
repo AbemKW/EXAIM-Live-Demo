@@ -3,26 +3,26 @@ title: EXAIM - Clinical Decision Support Demo
 emoji: 🏥
 colorFrom: blue
 colorTo: green
-sdk: gradio
-sdk_version: "5.9.1"
-app_file: app.py
+sdk: docker
+app_port: 7860
 pinned: false
 ---
 
 # EXAIM – MedGemma Impact Challenge Submission
 
-## 🚀 Hugging Face Space Setup
+## 🚀 Hugging Face Space Setup (Docker)
 
-This repository is configured to run as a Hugging Face Space. To deploy:
+This repository is configured to run as a Docker-based Hugging Face Space with a Next.js frontend and FastAPI backend.
 
-1. **Add Required Secrets** in your Space Settings:
-   - `GOOGLE_API_KEY` - Your Google API key for Gemini models (required)
-   - `MAS_LLM_PROVIDER` - Set to `google` (optional, defaults to google)
-   - `MAS_LLM_MODEL` - Set to `gemini-2.0-flash-exp` (optional, defaults to gemini-2.0-flash-exp)
+### Architecture
+- **Frontend**: Next.js (React) - Real-time UI with WebSocket updates
+- **Backend**: FastAPI (Python) - EXAIM processing engine
+- **Reverse Proxy**: Nginx - Routes traffic on port 7860
 
-2. The Space will automatically use `app.py` as the entry point
-
-3. For local development, copy `.env.example` to `.env` and add your API keys
+### Deployment
+1. The Space automatically builds the Docker container from the `Dockerfile`
+2. All services (Next.js, FastAPI, Nginx) start via supervisor
+3. Access the UI at your Space URL (port 7860 is auto-mapped)
 
 ---
 
