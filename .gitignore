@@ -4,11 +4,13 @@ evals/
 # CDSS example - not needed for live demo  
 demos/cdss_example/
 
-# Binary files (except logos needed for frontend)
+# Binary files
+*.png
 *.pdf
 *.jpg
 *.jpeg
 *.gif
+*.ico
 
 # Docker files for evals only (not main Dockerfile)
 Dockerfile.evals
