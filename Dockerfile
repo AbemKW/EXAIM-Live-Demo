@@ -48,9 +48,6 @@ COPY demos/cdss_example ./demos/cdss_example
 COPY demos/backend ./demos/backend
 COPY demos/__init__.py ./demos/__init__.py
 
-# Copy GCP credentials if exists (for model access)
-COPY gen-lang-client-*.json /app/ 2>/dev/null || true
-
 # Copy built frontend from Stage 1
 COPY --from=frontend-builder /app/frontend/.next ./demos/frontend/.next
 COPY --from=frontend-builder /app/frontend/public ./demos/frontend/public

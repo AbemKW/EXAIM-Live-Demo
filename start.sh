@@ -8,14 +8,8 @@ echo "==================================="
 # Create log directory for supervisor
 mkdir -p /var/log/supervisor
 
-# Set Google Cloud credentials if file exists
-for cred_file in /app/gen-lang-client-*.json; do
-    if [ -f "$cred_file" ]; then
-        export GOOGLE_APPLICATION_CREDENTIALS="$cred_file"
-        echo "✓ Google Cloud credentials found: $cred_file"
-        break
-    fi
-done
+# GCP credentials are managed via Hugging Face Spaces Secrets
+# No need to set GOOGLE_APPLICATION_CREDENTIALS manually
 
 # Start supervisor which will manage backend, Next.js, and nginx
 echo "✓ Starting services with supervisor..."
