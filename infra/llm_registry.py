@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, Union
 from dotenv import find_dotenv, load_dotenv
 load_dotenv(find_dotenv())
+import torch
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
@@ -64,25 +65,21 @@ class HuggingFacePipelineLLM(BaseChatModel):
         if not messages:
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content=""))])
 
-        # Check if model supports native system role (MedGemma 27B does, older models may not)
-        supports_system_role = "medgemma-27b" in self.model_name.lower() or "gemma-3" in self.model_name.lower()
+        # Extract system message if present (always prepend to first user message)
+        # MedGemma models can produce empty outputs if a 'system' role is passed
         system_instruction = ""
-
-        # Extract system message if present
         start_idx = 0
         if isinstance(messages[0], SystemMessage):
             system_instruction = messages[0].content
             start_idx = 1
 
-        # Convert messages to HF format
+        # Convert messages to HF format (only 'user' and 'assistant' roles)
         for msg in messages[start_idx:]:
             # Map LangChain roles to HF chat roles
-            if isinstance(msg, SystemMessage):
-                role = "system"
-            elif isinstance(msg, AIMessage):
+            if isinstance(msg, AIMessage):
                 role = "assistant"
             else:
-                # Treat HumanMessage and any unknown as user
+                # Treat HumanMessage, SystemMessage (if any remain), and unknown as user
                 role = "user"
 
             content = msg.content
@@ -93,20 +90,25 @@ class HuggingFacePipelineLLM(BaseChatModel):
 
             hf_messages.append({"role": role, "content": content})
 
-        # For models that don't support system role, prepend to first user message
-        if system_instruction and not supports_system_role:
-            if hf_messages and hf_messages[0]["role"] == "user":
-                content = hf_messages[0]["content"]
+        # Always prepend system instruction to first user message (safe fallback)
+        if system_instruction:
+            # Find the first user message
+            first_user_idx = None
+            for i, msg in enumerate(hf_messages):
+                if msg["role"] == "user":
+                    first_user_idx = i
+                    break
+            
+            if first_user_idx is not None:
+                # Prepend system instruction to first user message
+                content = hf_messages[first_user_idx]["content"]
                 if isinstance(content, str):
-                    hf_messages[0]["content"] = f"{system_instruction}\n\n{content}"
+                    hf_messages[first_user_idx]["content"] = f"{system_instruction}\n\n{content}"
                 elif isinstance(content, list):
                     content.insert(0, {"type": "text", "text": system_instruction})
             else:
-                # No user message, add system as user message
+                # No user message found, add system as a user message at the start
                 hf_messages.insert(0, {"role": "user", "content": system_instruction})
-        elif system_instruction and supports_system_role:
-            # Add system message at the beginning for models that support it
-            hf_messages.insert(0, {"role": "system", "content": system_instruction})
 
         # --- Pipeline Invocation following official MedGemma docs ---
         try:
@@ -226,6 +228,8 @@ _CONFIG_PATH = Path(__file__).parent / "model_configs.yaml"
 _DEFAULT_CONFIGS = None
 # Cache for HuggingFace pipelines to prevent double loading (OOM)
 _HF_PIPELINE_CACHE = {}
+# GPU allocation tracking - maps model names to assigned GPU devices
+_GPU_ASSIGNMENTS = {}
 
 
 def _load_default_configs():
@@ -237,6 +241,60 @@ def _load_default_configs():
             with open(_CONFIG_PATH, 'r') as f:
                 _DEFAULT_CONFIGS = yaml.safe_load(f) or {}
     return _DEFAULT_CONFIGS
+
+
+def _get_device_assignment(model_name: str) -> Union[str, dict]:
+    """Determine GPU device assignment for a model to distribute load across multiple GPUs.
+    
+    Strategy:
+    - 27B models (buffer_agent) -> cuda:1 (larger model on second GPU)
+    - 4B models (summarizer) -> cuda:0 (smaller model on first GPU)
+    - Falls back to "auto" if only 1 GPU or CUDA not available
+    
+    Args:
+        model_name: Name of the model being loaded
+        
+    Returns:
+        Device map (string or dict) for transformers device_map parameter
+    """
+    global _GPU_ASSIGNMENTS
+    
+    # Check if already assigned
+    if model_name in _GPU_ASSIGNMENTS:
+        logger.info(f"Using cached GPU assignment for {model_name}: {_GPU_ASSIGNMENTS[model_name]}")
+        return _GPU_ASSIGNMENTS[model_name]
+    
+    # Check GPU availability
+    if not torch.cuda.is_available():
+        logger.warning("CUDA not available, using CPU")
+        _GPU_ASSIGNMENTS[model_name] = "cpu"
+        return "cpu"
+    
+    num_gpus = torch.cuda.device_count()
+    logger.info(f"Detected {num_gpus} CUDA device(s)")
+    
+    # If only 1 GPU, use auto (let transformers handle it)
+    if num_gpus < 2:
+        logger.info("Single GPU detected, using device_map='auto'")
+        _GPU_ASSIGNMENTS[model_name] = "auto"
+        return "auto"
+    
+    # Multi-GPU strategy: distribute by model size
+    # 27B models are ~16-18GB quantized, assign to cuda:1
+    # 4B models are ~3GB quantized, assign to cuda:0
+    if "27b" in model_name.lower():
+        device = "cuda:1"  # Second GPU for large model
+        logger.info(f"Assigning 27B model to {device} (second GPU)")
+    elif "4b" in model_name.lower() or "1.5" in model_name.lower():
+        device = "cuda:0"  # First GPU for small model
+        logger.info(f"Assigning 4B model to {device} (first GPU)")
+    else:
+        # Unknown size, use auto
+        device = "auto"
+        logger.info(f"Unknown model size, using device_map='auto'")
+    
+    _GPU_ASSIGNMENTS[model_name] = device
+    return device
 
 
 def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None):
@@ -351,7 +409,6 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             pipe = _HF_PIPELINE_CACHE[cache_key]
         else:
             # Create pipeline with device_map for automatic GPU support
-            import torch
             from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig, BitsAndBytesConfig
             
             # Detect if this is a quantized model (bnb-4bit suffix)
@@ -364,12 +421,15 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             else:
                 model_dtype = torch.bfloat16 if "medgemma-27b" in model_name.lower() else "auto"
             
+            # Determine GPU assignment for multi-GPU load distribution
+            device_map = _get_device_assignment(model_name)
+            
             try:
-                logger.info(f"Loading HuggingFace model: {model_name} (quantized={is_quantized})")
+                logger.info(f"Loading HuggingFace model: {model_name} (quantized={is_quantized}, device={device_map})")
                 
                 # Build model loading kwargs
                 model_kwargs = {
-                    "device_map": "auto",
+                    "device_map": device_map,
                     "trust_remote_code": True,
                 }
                 
