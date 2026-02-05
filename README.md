@@ -16,13 +16,26 @@ This repository is configured to run as a Docker-based Hugging Face Space with a
 
 ### Architecture
 - **Frontend**: Next.js (React) - Real-time UI with WebSocket updates
-- **Backend**: FastAPI (Python) - EXAIM processing engine
+- **Backend**: FastAPI (Python) - EXAIM processing engine with MedGemma 27B
 - **Reverse Proxy**: Nginx - Routes traffic on port 7860
 
+### Hardware Requirements
+- **Recommended**: Nvidia A100 large (80GB VRAM, $2.50/hour)
+  - MedGemma 27B requires ~54GB VRAM in bfloat16
+  - A100 provides enough headroom for model + activations
+- **Budget Option**: Nvidia 1xL40S (48GB VRAM, $1.80/hour)
+  - Might work with memory optimizations
+  - Tighter on memory, may need gradient checkpointing
+
+### Required Space Secrets
+Add these in your Space Settings → Variables and secrets:
+- `GOOGLE_API_KEY` - Your Google AI/Gemini API key (for MAS agents, get from https://aistudio.google.com/app/apikey)
+
 ### Deployment
-1. The Space automatically builds the Docker container from the `Dockerfile`
-2. All services (Next.js, FastAPI, Nginx) start via supervisor
-3. Access the UI at your Space URL (port 7860 is auto-mapped)
+1. Configure GPU hardware in Space Settings (see Hardware Requirements above)
+2. The Space automatically builds the Docker container from the `Dockerfile`
+3. All services (Next.js, FastAPI, Nginx) start via supervisor
+4. Access the UI at your Space URL (port 7860 is auto-mapped)
 
 ---
 

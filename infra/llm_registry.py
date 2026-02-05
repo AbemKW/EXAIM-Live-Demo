@@ -343,12 +343,12 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             # Create pipeline with device_map for automatic GPU support
             # MedGemma 27B recommends bfloat16, other models use auto
             import torch
-            torch_dtype = torch.bfloat16 if "medgemma-27b" in model_name.lower() else "auto"
+            model_dtype = torch.bfloat16 if "medgemma-27b" in model_name.lower() else "auto"
             
             pipe_kwargs = {
                 "model": model_name,
                 "device_map": "auto",
-                "torch_dtype": torch_dtype,
+                "dtype": model_dtype,  # Updated from torch_dtype (deprecated)
                 "trust_remote_code": True,
             }
             
