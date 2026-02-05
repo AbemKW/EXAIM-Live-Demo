@@ -199,12 +199,22 @@ class EXAIM:
             latest_summary_str = self._format_summary_for_history(summaries[-1]) if summaries else "No summaries yet."
             
             try:
-                summary = await self.summarizer_agent.summarize(
-                    agent_segments,
-                    summary_history_strs,
-                    latest_summary_str,
-                    self.history_k
-                )
+                logger.info("[EXAIM] Calling summarizer_agent.summarize() with timeout=120s")
+                import asyncio as _asyncio
+                try:
+                    summary = await _asyncio.wait_for(
+                        self.summarizer_agent.summarize(
+                            agent_segments,
+                            summary_history_strs,
+                            latest_summary_str,
+                            self.history_k,
+                        ),
+                        timeout=120.0,
+                    )
+                except _asyncio.TimeoutError:
+                    logger.error("[EXAIM] Summarizer timed out after 120s")
+                    return None
+
                 logger.info(f"[EXAIM] Summarizer completed successfully")
             except Exception as e:
                 logger.error(f"[EXAIM] Summarizer failed: {e}", exc_info=True)
