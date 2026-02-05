@@ -49,7 +49,8 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir uvicorn[standard] fastapi websockets
+    && pip install --no-cache-dir uvicorn[standard] fastapi websockets \
+    && pip install --no-cache-dir bitsandbytes>=0.46.1
 
 # Copy application code (EXAIM core logic and models)
 COPY exaim_core ./exaim_core
