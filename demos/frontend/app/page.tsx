@@ -13,7 +13,7 @@ import { useCDSSStore } from '@/store/cdssStore';
 export default function Home() {
   const [currentPage, setCurrentPage] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const containerRef = useRef<HTMLMainElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const wheelTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastWheelTimeRef = useRef<number>(0);
   const toggleSummary = useCDSSStore((state) => state.toggleSummary);
