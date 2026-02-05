@@ -344,22 +344,47 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             pipe = _HF_PIPELINE_CACHE[cache_key]
         else:
             # Create pipeline with device_map for automatic GPU support
-            # MedGemma 27B recommends bfloat16, other models use auto
             import torch
-            from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
+            from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig, BitsAndBytesConfig
             
-            model_dtype = torch.bfloat16 if "medgemma-27b" in model_name.lower() else "auto"
+            # Detect if this is a quantized model (bnb-4bit suffix)
+            is_quantized = "bnb-4bit" in model_name.lower()
+            
+            # Set dtype - use bfloat16 for 27B models, auto for others (unless quantized)
+            if is_quantized:
+                # Quantized models handle dtype internally via BitsAndBytesConfig
+                model_dtype = None
+            else:
+                model_dtype = torch.bfloat16 if "medgemma-27b" in model_name.lower() else "auto"
             
             try:
-                logger.info(f"Loading HuggingFace model: {model_name}")
+                logger.info(f"Loading HuggingFace model: {model_name} (quantized={is_quantized})")
+                
+                # Build model loading kwargs
+                model_kwargs = {
+                    "device_map": "auto",
+                    "trust_remote_code": True,
+                }
+                
+                # Add quantization config if using a bnb-4bit model
+                if is_quantized:
+                    logger.info("Using 4-bit quantization with bitsandbytes")
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_compute_dtype=torch.bfloat16,
+                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_quant_type="nf4"
+                    )
+                    model_kwargs["quantization_config"] = quantization_config
+                else:
+                    # Only set torch_dtype for non-quantized models
+                    model_kwargs["torch_dtype"] = model_dtype
                 
                 # Load tokenizer and model separately to configure generation properly
                 tokenizer = AutoTokenizer.from_pretrained(model_name)
                 model_obj = AutoModelForCausalLM.from_pretrained(
                     model_name,
-                    device_map="auto",
-                    torch_dtype=model_dtype,
-                    trust_remote_code=True,
+                    **model_kwargs
                 )
                 
                 # Override generation_config to remove conflicts

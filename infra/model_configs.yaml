@@ -22,9 +22,9 @@ summarizer:
 # Buffer Agent - Trace Trigger Decision
 # Used by: BufferAgent
 # Purpose: Decide when to trigger summarization based on trace completeness and novelty
-# Uses smaller/faster model since this is just boolean analysis, not content generation
+# Uses 27B model for rigorous analysis, quantized to 4-bit for memory efficiency
 buffer_agent:
   provider: huggingface
-  model: lmstudio-community/medgemma-27b-text-it-GGUF
+  model: unsloth/medgemma-27b-text-it-unsloth-bnb-4bit
   streaming: false
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL
