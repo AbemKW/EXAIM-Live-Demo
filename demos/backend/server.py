@@ -17,9 +17,17 @@ from typing import Literal, Optional
 from demos.cdss_example.cdss import CDSS
 from demos.cdss_example.message_bus import message_queue
 
-# Add evals/src to path for trace replay engine
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "evals" / "src"))
-from traces.trace_replay_engine import TraceReplayEngine, ReplayEvent
+# Try to import trace replay engine for trace_replay mode (optional for live demo)
+try:
+    # Add evals/src to path for trace replay engine
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "evals" / "src"))
+    from traces.trace_replay_engine import TraceReplayEngine, ReplayEvent
+    TRACE_REPLAY_AVAILABLE = True
+except ImportError:
+    TRACE_REPLAY_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("Trace replay engine not available - trace_replay mode disabled")
+
 from exaim_core.exaim import EXAIM
 
 
@@ -664,6 +672,12 @@ async def process_case(request: CaseRequest):
                     }
                 
             elif request.mode == "trace_replay":
+                # Check if trace replay is available
+                if not TRACE_REPLAY_AVAILABLE:
+                    raise HTTPException(
+                        status_code=501,
+                        detail="Trace replay mode is not available in this deployment"
+                    )
                 # New trace replay path
                 await replay_trace_file(request.trace_file)
             else:
