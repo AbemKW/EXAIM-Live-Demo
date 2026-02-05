@@ -26,7 +26,11 @@ export default function CaseInput() {
   const fetchTraces = async () => {
     setLoadingTraces(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      // Auto-detect API URL: use relative path in production, localhost in dev
+      const apiUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+        ? '' // Relative URL for production (nginx will route)
+        : 'http://localhost:8000';
+      
       const response = await fetch(`${apiUrl}/api/traces`);
       if (!response.ok) {
         throw new Error('Failed to fetch traces');
@@ -75,12 +79,14 @@ export default function CaseInput() {
       // In development, use localhost:8000
       const apiUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
         ? '' // Relative URL for production (nginx will route)
-        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
+        : 'http://localhost:8000';
       
       const requestBody: CaseRequest = {
         mode,
         ...(mode === 'live_demo' ? { case: caseText.trim() } : { trace_file: selectedTrace }),
       };
+
+      console.log('Submitting case request:', { apiUrl, requestBody });
 
       const response = await fetch(`${apiUrl}/api/process-case`, {
         method: 'POST',
@@ -89,6 +95,8 @@ export default function CaseInput() {
         },
         body: JSON.stringify(requestBody),
       });
+
+      console.log('Response status:', response.status);
 
       if (!response.ok) {
         const error = await response.json();
