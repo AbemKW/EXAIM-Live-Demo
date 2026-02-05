@@ -47,6 +47,17 @@ async def lifespan(app: FastAPI):
         logger.info("Model preloading complete.")
         
     asyncio.create_task(preload_task())
+
+    # Preload models in background to avoid blocking server startup while initializing heavy models
+    async def preload_task():
+        logger.info("Starting model preloading in background...")
+        from infra.llm_registry import preload_models
+        # Run in thread pool to avoid blocking the event loop with heavy model loading
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, preload_models)
+        logger.info("Model preloading complete.")
+        
+    asyncio.create_task(preload_task())
     
     yield
     # Shutdown: Cancel background task

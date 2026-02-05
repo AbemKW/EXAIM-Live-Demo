@@ -503,8 +503,10 @@ def preload_models(roles: Optional[List[str]] = None):
         _registry = LLMRegistry()
     
     if roles is None:
-        # Load all roles defined in configs
-        roles = list(_registry._configs.keys())
+        # Load roles directly from default config schema (YAML source of truth)
+        # This ensures we preload exactly what is defined in our configuration
+        defaults = _load_default_configs()
+        roles = list(defaults.keys())
         
     logger.info(f"Preloading models for roles: {roles}")
     for role in roles:
