@@ -7,7 +7,7 @@ interface SummaryTimelineProps {
   summaries: Summary[];
   expandedSummaryId: string | undefined;
   onDotClick: (summaryId: string) => void;
-  summaryRefs: Map<string, React.RefObject<HTMLDivElement>>;
+  summaryRefs: Map<string, React.RefObject<HTMLDivElement | null>>;
 }
 
 export default function SummaryTimeline({
