@@ -110,18 +110,19 @@ class HuggingFacePipelineLLM(BaseChatModel):
 
         # --- Pipeline Invocation following official MedGemma docs ---
         try:
-            # Build generation kwargs - only include non-default parameters
-            # to avoid conflicts with model's generation_config
+            # Build generation kwargs - use max_new_tokens, avoid conflicts with generation_config
             gen_kwargs = {
                 "max_new_tokens": 2048,
                 "return_full_text": False,  # Only return new tokens, not the input
             }
             
             # Only add temperature/sampling if temperature > 0
-            # Don't set do_sample=False as it conflicts with generation_config
             if self.temperature is not None and self.temperature > 0:
                 gen_kwargs["do_sample"] = True
                 gen_kwargs["temperature"] = self.temperature
+            else:
+                # Explicitly disable sampling for deterministic output (temp=0)
+                gen_kwargs["do_sample"] = False
 
             # Log the input for debugging (truncated)
             input_debug = str(hf_messages)
@@ -343,18 +344,39 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             # Create pipeline with device_map for automatic GPU support
             # MedGemma 27B recommends bfloat16, other models use auto
             import torch
+            from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
+            
             model_dtype = torch.bfloat16 if "medgemma-27b" in model_name.lower() else "auto"
             
-            pipe_kwargs = {
-                "model": model_name,
-                "device_map": "auto",
-                "dtype": model_dtype,  # Updated from torch_dtype (deprecated)
-                "trust_remote_code": True,
-            }
-            
             try:
-                logger.info(f"Loading HuggingFace pipeline: task={task}, model={model_name}")
-                pipe = hf_pipeline(task, **pipe_kwargs)
+                logger.info(f"Loading HuggingFace model: {model_name}")
+                
+                # Load tokenizer and model separately to configure generation properly
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                model_obj = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    device_map="auto",
+                    torch_dtype=model_dtype,
+                    trust_remote_code=True,
+                )
+                
+                # Override generation_config to remove conflicts
+                # Set sensible defaults that won't conflict with our max_new_tokens
+                model_obj.generation_config = GenerationConfig(
+                    max_new_tokens=2048,  # Default, will be overridden per call
+                    do_sample=False,       # Deterministic by default
+                    temperature=1.0,       # Neutral default
+                    pad_token_id=tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                )
+                
+                # Create pipeline with configured model
+                pipe = hf_pipeline(
+                    task,
+                    model=model_obj,
+                    tokenizer=tokenizer,
+                )
+                
                 _HF_PIPELINE_CACHE[cache_key] = pipe
                 logger.info("Successfully loaded HuggingFace pipeline")
             except Exception as e:
