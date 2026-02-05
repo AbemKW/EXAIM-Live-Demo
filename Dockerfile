@@ -83,6 +83,10 @@ ENV PYTHONUNBUFFERED=1
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=7860
+ENV HOME=/tmp
+ENV HF_HOME=/tmp/huggingface
+ENV TRANSFORMERS_CACHE=/tmp/huggingface/transformers
+ENV TORCH_HOME=/tmp/torch
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
