@@ -71,7 +71,12 @@ export default function CaseInput() {
     }
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      // In production (HF Spaces), use relative URL since nginx routes /api/* to backend
+      // In development, use localhost:8000
+      const apiUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+        ? '' // Relative URL for production (nginx will route)
+        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
+      
       const requestBody: CaseRequest = {
         mode,
         ...(mode === 'live_demo' ? { case: caseText.trim() } : { trace_file: selectedTrace }),
