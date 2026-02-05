@@ -18,6 +18,7 @@ gradio>=4.0.0
 transformers>=4.40.0
 torch>=2.0.0
 accelerate>=0.20.0
+bitsandbytes>=0.46.1
 
 # Optional for enhanced features
 matplotlib>=3.8.0

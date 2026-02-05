@@ -25,6 +25,6 @@ summarizer:
 # Uses smaller/faster model since this is just boolean analysis, not content generation
 buffer_agent:
   provider: huggingface
-  model: google/medgemma-27b-text-it
+  model: lmstudio-community/medgemma-27b-text-it-GGUF
   streaming: false
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL
