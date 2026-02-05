@@ -259,6 +259,9 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
             # Extract JSON from raw response
             content = raw_response.content if hasattr(raw_response, 'content') else str(raw_response)
             
+            logger = logging.getLogger(__name__)
+            logger.info(f"Summarizer Raw Content Preview: {content[:1000]}") # Debug log
+            
             # Try to parse JSON from response
             start_idx = content.find('{')
             if start_idx != -1:

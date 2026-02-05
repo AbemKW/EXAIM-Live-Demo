@@ -121,14 +121,16 @@ class HuggingFacePipelineLLM(BaseChatModel):
                 gen_kwargs["do_sample"] = True
                 gen_kwargs["temperature"] = self.temperature
             else:
-                # Explicitly disable sampling for deterministic output (temp=0)
-                gen_kwargs["do_sample"] = False
+                # Use subtle sampling for "deterministic" output instead of greedy decoding
+                # Greedy decoding (do_sample=False) can sometimes cause model loops/collapse
+                gen_kwargs["do_sample"] = True
+                gen_kwargs["temperature"] = 0.1
+                gen_kwargs["top_p"] = 0.95
 
             # Log the input for debugging (truncated)
             input_debug = str(hf_messages)
-            if len(input_debug) > 100:
-                input_debug = input_debug[:200] + "..."
-            logger.debug(f"HF Pipeline Input: {input_debug}")
+            logger.info(f"HF Pipeline Input (full): {input_debug}") # Changed to INFO and full
+
 
             # Call pipeline - text-generation pipeline expects messages directly
             # Note: The official docs use pipe(text=messages, ...) but the actual
@@ -485,4 +487,33 @@ def get_llm(role: Union[str, LLMRole]):
     if _registry is None:
         _registry = LLMRegistry()
     return _registry.get_llm(role)
+
+
+def preload_models(roles: Optional[List[str]] = None):
+    """Preload models for specified roles or all configured roles.
+    
+    This is useful for initializing heavy models (like HuggingFace pipelines)
+    at startup rather than on first request.
+    
+    Args:
+        roles: List of role names to preload. If None, preloads all.
+    """
+    global _registry
+    if _registry is None:
+        _registry = LLMRegistry()
+    
+    if roles is None:
+        # Load all roles defined in configs
+        roles = list(_registry._configs.keys())
+        
+    logger.info(f"Preloading models for roles: {roles}")
+    for role in roles:
+        try:
+            logger.info(f"Loading model for role: {role}")
+            _registry.get_llm(role)
+            logger.info(f"Successfully loaded model for role: {role}")
+        except Exception as e:
+            logger.error(f"Failed to preload model for role {role}: {e}")
+            # Don't raise, try to continue loading other models
+
 

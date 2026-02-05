@@ -90,8 +90,8 @@ ENV TORCH_HOME=/tmp/torch
 ENV USER=appuser
 ENV LOGNAME=appuser
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# Health check - Increase start period significantly for large model loading
+HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
 # Start supervisor to manage all services (backend, Next.js, nginx)
