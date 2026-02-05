@@ -56,12 +56,13 @@ class SummarizerAgent:
                 # Try to extract JSON
                 json_data = extract_json_from_text(content)
                 if json_data:
-                    try:
-                        return AgentSummary(**json_data)
-                    except ValidationError as e:
-                        raise ValueError(f"JSON validation failed: {e}\nExtracted JSON: {json_data}")
+                    # Don't catch ValidationError here - let it propagate for retry logic
+                    return AgentSummary(**json_data)
                 else:
                     raise ValueError(f"Could not extract valid JSON from response: {content[:500]}")
+            except ValidationError:
+                # Re-raise ValidationError as-is so retry logic can handle it
+                raise
             except Exception as e:
                 logger = logging.getLogger(__name__)
                 logger.error(f"Error parsing LLM output: {type(e).__name__}: {str(e)}")
