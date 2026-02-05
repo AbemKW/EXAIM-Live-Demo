@@ -20,7 +20,7 @@ export default function SummaryHistory({ onSummarySelect }: SummaryHistoryProps)
   
   // Create refs for each summary for timeline navigation
   const summaryRefs = useMemo(() => {
-    const refs = new Map<string, React.RefObject<HTMLDivElement>>();
+    const refs = new Map<string, React.RefObject<HTMLDivElement | null>>();
     summaries.forEach(summary => {
       refs.set(summary.id, createRef<HTMLDivElement>());
     });
