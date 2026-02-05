@@ -22,8 +22,9 @@ summarizer:
 # Buffer Agent - Trace Trigger Decision
 # Used by: BufferAgent
 # Purpose: Decide when to trigger summarization based on trace completeness and novelty
+# Uses smaller/faster model since this is just boolean analysis, not content generation
 buffer_agent:
   provider: huggingface
-  model: google/medgemma-27b-text-it
+  model: google/medgemma-1.5-4b-it
   streaming: false
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL
