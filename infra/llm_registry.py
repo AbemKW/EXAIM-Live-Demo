@@ -387,15 +387,11 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                     **model_kwargs
                 )
                 
-                # Override generation_config to remove conflicts
-                # Set sensible defaults that won't conflict with our max_new_tokens
-                model_obj.generation_config = GenerationConfig(
-                    max_new_tokens=2048,  # Default, will be overridden per call
-                    do_sample=False,       # Deterministic by default
-                    temperature=1.0,       # Neutral default
-                    pad_token_id=tokenizer.eos_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                )
+                # Don't set generation_config here - we'll pass all params via kwargs
+                # This avoids conflicts between model config and runtime kwargs
+                # Just ensure essential token IDs are set if not already
+                if tokenizer.pad_token_id is None:
+                    tokenizer.pad_token_id = tokenizer.eos_token_id
                 
                 # Create pipeline with configured model
                 pipe = hf_pipeline(
