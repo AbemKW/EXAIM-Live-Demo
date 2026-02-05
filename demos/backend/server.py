@@ -716,8 +716,14 @@ async def process_case(request: CaseRequest):
                 "status": "success",
                 "message": "Case processed successfully"
             }
-        except HTTPException:
-            # Re-raise HTTP exceptions (they already have proper status codes)
+        except HTTPException as http_exc:
+            # Send error to WebSocket clients
+            await broadcast_message({
+                "type": "error",
+                "message": http_exc.detail,
+                "timestamp": datetime.now().isoformat()
+            })
+            # Re-raise to return proper HTTP error response
             raise
         except Exception as e:
             error_msg = str(e)

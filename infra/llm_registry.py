@@ -151,6 +151,7 @@ class HuggingFacePipelineLLM(BaseChatModel):
                     gen_text = item["generated_text"]
                     if isinstance(gen_text, list) and len(gen_text) > 0:
                         # Get the last message (assistant's response)
+                        # Skip input messages and get only the new generated content
                         last_msg = gen_text[-1]
                         if isinstance(last_msg, dict):
                             text_output = last_msg.get("content", str(last_msg))
@@ -167,6 +168,11 @@ class HuggingFacePipelineLLM(BaseChatModel):
                     text_output = str(item)
             else:
                 text_output = str(result)
+
+            # Ensure we have actual content
+            if not text_output or text_output.strip() == "":
+                logger.error(f"HF Pipeline returned empty output. Full result structure: {result}")
+                raise ValueError("HuggingFace pipeline generated empty text. This may indicate a model configuration issue.")
 
             # Log the extracted output for debugging
             output_preview = text_output[:500] if len(text_output) > 500 else text_output
