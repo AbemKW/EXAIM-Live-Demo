@@ -71,6 +71,10 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Create writable directories for non-root user
+RUN mkdir -p /tmp/nginx /var/lib/nginx /var/log/nginx \
+    && chmod -R 777 /tmp /var/lib/nginx /var/log/nginx
+
 # Expose port 7860 (Hugging Face Spaces default)
 EXPOSE 7860
 
