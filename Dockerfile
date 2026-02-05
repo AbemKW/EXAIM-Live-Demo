@@ -87,6 +87,8 @@ ENV HOME=/tmp
 ENV HF_HOME=/tmp/huggingface
 ENV TRANSFORMERS_CACHE=/tmp/huggingface/transformers
 ENV TORCH_HOME=/tmp/torch
+ENV USER=appuser
+ENV LOGNAME=appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

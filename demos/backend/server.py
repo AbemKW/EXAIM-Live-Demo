@@ -699,6 +699,7 @@ async def process_case(request: CaseRequest):
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error processing case: {error_msg}")
+            logger.exception("Full traceback:")
             
             # Send error message to clients
             await broadcast_message({
