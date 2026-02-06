@@ -186,13 +186,13 @@ def _load_default_configs():
 def _get_device_assignment(model_name: str) -> Union[str, dict]:
     global _GPU_ASSIGNMENTS
     if model_name in _GPU_ASSIGNMENTS: return _GPU_ASSIGNMENTS[model_name]
-    if not torch.cuda.is_available(): return "cpu"
     
-    # 4B models to GPU 1, everything else to GPU 0
-    if "4b" in model_name.lower() or "1.5" in model_name.lower():
-         device = {"": 1}
-    else:
-         device = {"": 0}
+    if not torch.cuda.is_available():
+        return "cpu"
+    
+    # On HF Spaces, you typically only have GPU 0.
+    # We assign everything to GPU 0. If you had 2 GPUs, you could split logic here.
+    device = {"": 0}
          
     _GPU_ASSIGNMENTS[model_name] = device
     return device
@@ -224,6 +224,8 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                 "device_map": device_map,
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True, # Prevents meta tensor errors
+                # Add Flash Attention 2 for 2-3x speed boost on L4/A10G GPUs
+                "attn_implementation": "flash_attention_2" if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else "eager",
             }
             
             if is_quantized:
