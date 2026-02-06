@@ -1,4 +1,5 @@
 from typing import Optional, Callable, List
+import asyncio
 from exaim_core.buffer_agent.buffer_agent import BufferAgent
 from exaim_core.schema.agent_segment import AgentSegment
 from exaim_core.summarizer_agent.summarizer_agent import SummarizerAgent
@@ -78,6 +79,54 @@ class EXAIM:
         """Converts a list of AgentSummary objects to string representations for prompt history."""
         return [self._format_summary_for_history(s) for s in summaries]
 
+    async def _run_background_summary(
+        self,
+        agent_segments: list[AgentSegment],
+        summary_history_strs: list[str],
+        latest_summary_str: str,
+    ):
+        """Run summarization in background without blocking the main stream.
+        
+        This is a fire-and-forget task that:
+        1. Calls the summarizer agent
+        2. Appends the result to summaries
+        3. Invokes summary callbacks
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            logger.info("[EXAIM Background] Starting background summarization task")
+            summary = await asyncio.wait_for(
+                self.summarizer_agent.summarize(
+                    agent_segments,
+                    summary_history_strs,
+                    latest_summary_str,
+                    self.history_k,
+                ),
+                timeout=120.0,
+            )
+            
+            if summary is not None:
+                self.summaries.append(summary)
+                self._print_summary(summary)
+                
+                # Emit summary event to callbacks
+                for callback in self.summary_callbacks:
+                    try:
+                        callback(summary)
+                    except Exception as e:
+                        logger.error(f"Error in summary callback: {e}")
+                        
+                logger.info("[EXAIM Background] Summary completed successfully")
+            else:
+                logger.warning("[EXAIM Background] Summarizer returned None")
+                
+        except asyncio.TimeoutError:
+            logger.error("[EXAIM Background] Summarizer timed out after 120s")
+        except Exception as e:
+            logger.error(f"[EXAIM Background] Summarizer failed: {e}", exc_info=True)
+
     def _get_limited_history(self, summaries: list[AgentSummary]) -> list[str]:
         """Get the last k summary entries."""
         limited = summaries[-self.history_k:] if self.history_k > 0 else []
@@ -115,24 +164,16 @@ class EXAIM:
             all_summaries = self.get_all_summaries()
             summary_history_strs = self._get_limited_history(all_summaries[:-1])
             latest_summary_str = self._format_summary_for_history(all_summaries[-1]) if all_summaries else "No summaries yet."
-            summary = await self.summarizer_agent.summarize(
+            
+            # Fire-and-forget: Start background task for summarization (non-blocking)
+            asyncio.create_task(self._run_background_summary(
                 agent_segments,
                 summary_history_strs,
-                latest_summary_str,
-                self.history_k
-            )
-            if summary is not None:
-                self.summaries.append(summary)
-                self._print_summary(summary)
-                
-                # Emit summary event to callbacks
-                for callback in self.summary_callbacks:
-                    try:
-                        callback(summary)
-                    except Exception as e:
-                        print(f"Error in summary callback: {e}")
+                latest_summary_str
+            ))
             
-            return summary
+            # Return immediately without waiting for summary
+            return None
         return None
 
     async def on_new_token(self, agent_id: str, token: str) -> Optional[AgentSummary]:
@@ -193,45 +234,21 @@ class EXAIM:
         if trigger:
             # Flush returns deferred tail + current buffer content.
             agent_segments = self.buffer_agent.flush()
-            logger.info(f"[EXAIM] Trigger activated, flushed {len(agent_segments)} segments, calling summarizer...")
+            logger.info(f"[EXAIM] Trigger activated, flushed {len(agent_segments)} segments, starting background summarizer...")
             
             summary_history_strs = self._get_limited_history(summaries[:-1])
             latest_summary_str = self._format_summary_for_history(summaries[-1]) if summaries else "No summaries yet."
             
-            try:
-                logger.info("[EXAIM] Calling summarizer_agent.summarize() with timeout=120s")
-                import asyncio as _asyncio
-                try:
-                    summary = await _asyncio.wait_for(
-                        self.summarizer_agent.summarize(
-                            agent_segments,
-                            summary_history_strs,
-                            latest_summary_str,
-                            self.history_k,
-                        ),
-                        timeout=120.0,
-                    )
-                except _asyncio.TimeoutError:
-                    logger.error("[EXAIM] Summarizer timed out after 120s")
-                    return None
-
-                logger.info(f"[EXAIM] Summarizer completed successfully")
-            except Exception as e:
-                logger.error(f"[EXAIM] Summarizer failed: {e}", exc_info=True)
-                return None
-                
-            if summary is not None:
-                self.summaries.append(summary)
-                self._print_summary(summary)
-
-                # Emit summary event to callbacks
-                for callback in self.summary_callbacks:
-                    try:
-                        callback(summary)
-                    except Exception as e:
-                        print(f"Error in summary callback: {e}")
-
-            return summary
+            # Fire-and-forget: Start background task for summarization (non-blocking)
+            asyncio.create_task(self._run_background_summary(
+                agent_segments,
+                summary_history_strs,
+                latest_summary_str
+            ))
+            
+            logger.info("[EXAIM] Background summarization task started, returning immediately")
+            # Return immediately without waiting for summary
+            return None
         return None
 
     async def flush_agent(self, agent_id: str) -> None:

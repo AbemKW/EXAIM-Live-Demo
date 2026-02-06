@@ -118,7 +118,6 @@ class HuggingFacePipelineLLM(BaseChatModel):
             # Build generation kwargs - use max_new_tokens, avoid conflicts with generation_config
             gen_kwargs = {
                 "max_new_tokens": 1024,
-                "max_length": 8192,  # Set high max_length to override restrictive default (20)
                 "return_full_text": False,  # Only return new tokens, not the input
             }
             
