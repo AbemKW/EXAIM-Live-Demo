@@ -118,7 +118,7 @@ class HuggingFacePipelineLLM(BaseChatModel):
             # Build generation kwargs - use max_new_tokens, avoid conflicts with generation_config
             gen_kwargs = {
                 "max_new_tokens": 2048,
-                "max_length": None,  # Explicitly disable max_length to avoid conflicts
+                "max_length": 8192,  # Set high max_length to override restrictive default (20)
                 "return_full_text": False,  # Only return new tokens, not the input
             }
             
@@ -458,7 +458,7 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                     logger.info("Using Hybrid strategy for 27B model (auto split across both GPUs)")
                     model_kwargs = {
                         "device_map": "auto",  # Let accelerate split intelligently
-                        "max_memory": {0: "18GiB", 1: "18GiB", "cpu": "60GiB"},  # Limit each GPU, enable CPU offload
+                        "max_memory": {0: "18GiB", 1: "10GiB", "cpu": "60GiB"},  # GPU 1 reduced to leave room for 4B model
                         "trust_remote_code": True,
                         "low_cpu_mem_usage": True,
                     }
@@ -642,14 +642,22 @@ def preload_models(roles: Optional[List[str]] = None):
         defaults = _load_default_configs()
         roles = list(defaults.keys())
         
-    logger.info(f"Preloading models for roles: {roles}")
+    logger.info(f"🔥 WARMUP STARTING: Preloading models for roles: {roles}")
+    print(f"🔥 WARMUP STARTING: Preloading models for roles: {roles}")  # Console output
+    
     for role in roles:
         try:
             logger.info(f"Loading model for role: {role}")
+            print(f"  ⏳ Loading model for role: {role}...")
             _registry.get_llm(role)
             logger.info(f"Successfully loaded model for role: {role}")
+            print(f"  ✅ Successfully loaded model for role: {role}")
         except Exception as e:
             logger.error(f"Failed to preload model for role {role}: {e}")
+            print(f"  ❌ Failed to preload model for role {role}: {e}")
             # Don't raise, try to continue loading other models
+    
+    logger.info("🎉 WARMUP COMPLETE: All models preloaded")
+    print("🎉 WARMUP COMPLETE: All models preloaded")
 
 
