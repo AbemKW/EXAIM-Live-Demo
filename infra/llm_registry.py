@@ -227,15 +227,24 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             }
             
             # Try to use Flash Attention 2 for 2-3x speed boost on L4/A10G GPUs
-            # Only enable if GPU supports it (compute capability >= 8.0) and flash-attn is available
+            # Only enable if GPU supports it (compute capability >= 8.0) and the
+            # runtime package `flash_attn` is importable. Transformers will raise
+            # if `attn_implementation` requests flash attention but the package
+            # isn't installed, so we must verify importability here.
             if torch.cuda.is_available():
                 try:
                     compute_capability = torch.cuda.get_device_capability()[0]
                     if compute_capability >= 8:
-                        model_kwargs["attn_implementation"] = "flash_attention_2"
-                        logger.info(f"Enabling Flash Attention 2 for faster inference on GPU with compute {compute_capability}.x")
+                        # Only enable if flash_attn package is present
+                        try:
+                            import importlib
+                            importlib.import_module("flash_attn")
+                            model_kwargs["attn_implementation"] = "flash_attention_2"
+                            logger.info(f"Enabling Flash Attention 2 for faster inference on GPU with compute {compute_capability}.x")
+                        except Exception:
+                            logger.info("flash_attn package not found; skipping Flash Attention 2")
                 except Exception as e:
-                    logger.info(f"Flash Attention 2 not available, using standard attention: {e}")
+                    logger.info(f"Unable to determine GPU compute capability: {e}")
             
             if is_quantized:
                 model_kwargs["quantization_config"] = BitsAndBytesConfig(
@@ -316,4 +325,8 @@ def preload_models(roles=None):
     defaults = _load_default_configs()
     roles = roles or list(defaults.keys())
     for role in roles:
-        _registry.get_llm(role)
+        try:
+            _registry.get_llm(role)
+        except Exception as e:
+            # Log and continue so a failed preload doesn't crash the whole app
+            logger.exception(f"Preloading model for role {role} failed: {e}")
