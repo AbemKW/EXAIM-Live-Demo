@@ -449,13 +449,26 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             try:
                 logger.info(f"Loading HuggingFace model: {model_name} (quantized={is_quantized}, device={device_map})")
                 
-                # Build model loading kwargs with strict GPU isolation
-                model_kwargs = {
-                    "device_map": device_map,
-                    "trust_remote_code": True,
-                    "low_cpu_mem_usage": True,  # Reduce CPU memory during loading
-                }
-                # Note: Using strict device_map isolation - no max_memory needed
+                # Differentiate loading strategy: 27B vs 4B models
+                # 4B model uses "Simple Load Strategy" to avoid meta tensor error
+                is_small_model = "4b" in model_name.lower() or "1.5" in model_name.lower()
+                
+                if is_small_model:
+                    # Simple Load Strategy for 4B model to avoid "Cannot copy out of meta tensor" error
+                    logger.info("Using Simple Load Strategy for 4B model (load to RAM then move to GPU)")
+                    model_kwargs = {
+                        "device_map": None,  # Load to CPU/RAM first
+                        "trust_remote_code": True,
+                        "low_cpu_mem_usage": False,  # Force real weights loading (bypass meta device)
+                    }
+                else:
+                    # Standard strategy for 27B model with strict GPU isolation
+                    logger.info("Using strict GPU isolation strategy for 27B model")
+                    model_kwargs = {
+                        "device_map": device_map,
+                        "trust_remote_code": True,
+                        "low_cpu_mem_usage": True,  # Reduce CPU memory during loading
+                    }
                 
                 # Add quantization config if using a bnb-4bit model
                 if is_quantized:
@@ -477,6 +490,13 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                     model_name,
                     **model_kwargs
                 )
+                
+                # For small models: manually move to target GPU after loading to RAM
+                if is_small_model and torch.cuda.is_available():
+                    target_device = "cuda:1"  # 4B model goes to GPU 1
+                    logger.info(f"Moving 4B model from RAM to {target_device}")
+                    model_obj = model_obj.to(target_device)
+                    logger.info(f"Successfully moved 4B model to {target_device}")
                 
                 # Don't set generation_config here - we'll pass all params via kwargs
                 # This avoids conflicts between model config and runtime kwargs
