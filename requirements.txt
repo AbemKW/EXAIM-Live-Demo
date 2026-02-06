@@ -11,14 +11,14 @@ pydantic>=2.0.0
 python-dotenv>=1.0.0
 tiktoken>=0.5.0
 
-# Gradio for web interface
-gradio>=4.0.0
-
 # For model inference (HuggingFace models)
 transformers>=4.40.0
 torch>=2.0.0
 accelerate>=0.20.0
 bitsandbytes>=0.46.1
+vllm>=0.4.0
+# vLLM (high-performance inference) - requires CUDA-enabled base image and compatible wheel
+# langchain and langchain-community already included above and are required by the wrapper
 # flash-attn optional - installed dynamically if GPU supports it
 
 # Optional for enhanced features
