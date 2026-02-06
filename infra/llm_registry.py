@@ -323,27 +323,39 @@ def _get_device_assignment(model_name: str) -> Union[str, dict]:
 
 def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None, role: str = ""):
     provider = provider.lower()
+    # default to 27B if not specified
     model_name = model or os.getenv("HUGGINGFACE_MODEL", "google/medgemma-27b-text-it")
 
-    # vLLM provider: high-performance sharded inference across multiple GPUs
     if provider == "vllm":
         if VLLM is None:
-            # Fallback logic if vLLM package is missing
             logger.warning("vLLM package not found. Falling back to HuggingFace.")
             provider = "huggingface"
         else:
-            # vLLM initialization parameters tuned for 2x A10G
-            # REMOVED "dtype" from here to prevent collision
-            vllm_kwargs = {
-                "quantization": "bitsandbytes", 
-            }
+            # --- DYNAMIC CONFIGURATION START ---
+            
+            # 1. Determine Tensor Parallelism (TP)
+            # 27B needs 2 GPUs. 4B needs 1 GPU (and crashes with 2 if pre-quantized).
+            if "27b" in model_name.lower():
+                tp_size = 2
+            else:
+                tp_size = 1
+
+            # 2. Configure Quantization
+            # If the model is ALREADY 4-bit (like the unsloth one), don't force quantization again.
+            vllm_kwargs = {}
+            if "bnb-4bit" not in model_name.lower() and "awq" not in model_name.lower():
+                # Force quantization only for the big 27B model to make it fit
+                vllm_kwargs["quantization"] = "bitsandbytes"
+
+            # --- DYNAMIC CONFIGURATION END ---
 
             try:
                 vllm = VLLM(
                     model=model_name,
-                    tensor_parallel_size=2,
+                    tensor_parallel_size=tp_size,  # Dynamic size (1 or 2)
                     trust_remote_code=True,
                     gpu_memory_utilization=0.90,
+                    dtype="bfloat16",              # Required for Gemma models
                     vllm_kwargs=vllm_kwargs,
                 )
 
