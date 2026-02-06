@@ -448,35 +448,35 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             try:
                 logger.info(f"Loading HuggingFace model: {model_name} (quantized={is_quantized})")
                 
-                # Strict Manual GPU Assignment: 27B->GPU0, 4B->GPU1
-                # Both models fit entirely on a single A10G (24GB)
+                # BALANCED SPLIT STRATEGY for 2x A10G (24GB each)
+                # 27B model: Split across both GPUs (12GB each) to avoid OOM
+                # 4B model: Isolate on GPU 1 (plenty of space after 27B's 12GB slice)
                 is_large_model = "27b" in model_name.lower()
                 is_small_model = "4b" in model_name.lower() or "1.5" in model_name.lower()
                 
                 if is_large_model:
-                    # 27B model: Assign entirely to GPU 0
-                    logger.info("Assigning 27B model entirely to GPU 0 (strict manual assignment)")
+                    # 27B model: Split across both GPUs using auto allocation
+                    logger.info("Splitting 27B model across both GPUs (12GB per GPU, balanced split)")
                     model_kwargs = {
-                        "device_map": {"":  0},  # Strict: entire model on GPU 0
-                        "max_memory": {0: "22GiB", 1: "22GiB", "cpu": "60GiB"},  # Safety guardrails
+                        "device_map": "auto",  # Let transformers split the model
+                        "max_memory": {0: "12GiB", 1: "12GiB", "cpu": "60GiB"},  # Balanced 12GB/12GB split
                         "trust_remote_code": True,
-                        "low_cpu_mem_usage": True,  # Works correctly with explicit device_map
                     }
                 elif is_small_model:
-                    # 4B model: Assign entirely to GPU 1
-                    logger.info("Assigning 4B model entirely to GPU 1 (strict manual assignment)")
+                    # 4B model: Isolate entirely on GPU 1
+                    logger.info("Isolating 4B model entirely on GPU 1")
                     model_kwargs = {
-                        "device_map": {"":  1},  # Strict: entire model on GPU 1
+                        "device_map": {"": 1},  # Strict isolation on GPU 1
                         "trust_remote_code": True,
-                        "low_cpu_mem_usage": True,  # Works correctly with explicit device_map
+                        "low_cpu_mem_usage": True,  # Safe with plenty of VRAM headroom
                     }
                 else:
-                    # Fallback for unknown models: assign to GPU 0
-                    logger.warning(f"Unknown model size, assigning to GPU 0 with strict isolation")
+                    # Fallback for unknown models: use balanced split
+                    logger.warning(f"Unknown model size, using balanced split strategy")
                     model_kwargs = {
-                        "device_map": {"":  0},
+                        "device_map": "auto",
+                        "max_memory": {0: "12GiB", 1: "12GiB", "cpu": "60GiB"},
                         "trust_remote_code": True,
-                        "low_cpu_mem_usage": True,
                     }
                 
                 # Add quantization config if using a bnb-4bit model
