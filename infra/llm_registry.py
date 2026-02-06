@@ -3,7 +3,9 @@
 Centralized LLM management with role-based configuration.
 Supports YAML configuration with environment variable overrides.
 """
+# Fix CUDA memory fragmentation before any torch imports
 import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import yaml
 import logging
 import warnings
@@ -293,11 +295,11 @@ def _get_device_assignment(model_name: str) -> Union[str, dict]:
         return device
     
     # Multi-GPU strategy: distribute by model size
-    # 27B models are ~16-18GB quantized, assign to cuda:1
+    # 27B models are ~16-18GB quantized, use 'auto' for smart offloading
     # 4B models are ~3GB quantized, assign to cuda:0
     if "27b" in model_name.lower():
-        device = "cuda:1"  # Second GPU for large model
-        logger.info(f"Assigning 27B model to {device} (second GPU)")
+        device = "auto"  # Let accelerate handle multi-GPU/CPU offloading for large models
+        logger.info(f"Assigning 27B model to device_map='auto' for smart offloading")
     elif "4b" in model_name.lower() or "1.5" in model_name.lower():
         device = "cuda:0"  # First GPU for small model
         logger.info(f"Assigning 4B model to {device} (first GPU)")
@@ -447,16 +449,19 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                     "low_cpu_mem_usage": True,  # Reduce CPU memory during loading
                 }
                 
-                # For single GPU with limited memory, set max_memory to enable CPU offloading
+                # For device_map='auto', set max_memory to cap GPU usage at 90% and enable CPU offloading
                 if device_map == "auto" and torch.cuda.is_available():
                     num_gpus = torch.cuda.device_count()
-                    if num_gpus == 1:
-                        # Reserve some GPU memory for CUDA operations, allow CPU offload
-                        gpu_mem = torch.cuda.get_device_properties(0).total_memory
-                        # Use 90% of GPU memory, rest for CUDA overhead
+                    max_memory = {}
+                    # Cap each GPU at 90% to leave buffer for CUDA operations
+                    for i in range(num_gpus):
+                        gpu_mem = torch.cuda.get_device_properties(i).total_memory
                         max_gpu_mem = int(0.9 * gpu_mem)
-                        model_kwargs["max_memory"] = {0: max_gpu_mem, "cpu": "40GiB"}
-                        logger.info(f"Single GPU mode: Setting max_memory to enable CPU offloading")
+                        max_memory[i] = max_gpu_mem
+                    # Allow CPU offloading for overflow
+                    max_memory["cpu"] = "40GiB"
+                    model_kwargs["max_memory"] = max_memory
+                    logger.info(f"Setting max_memory for {num_gpus} GPU(s) with 90% cap and CPU offloading enabled")
                 
                 # Add quantization config if using a bnb-4bit model
                 if is_quantized:
