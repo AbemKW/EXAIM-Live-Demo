@@ -5,7 +5,8 @@ Supports YAML configuration with environment variable overrides.
 """
 # Fix CUDA memory fragmentation before any torch imports
 import os
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:128"
+import gc
 import yaml
 import logging
 import warnings
@@ -190,6 +191,10 @@ class HuggingFacePipelineLLM(BaseChatModel):
             logger.exception("Full traceback:")
             warnings.warn(f"HuggingFace pipeline error: {e}")
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content=f"Error: {str(e)}"))])
+        finally:
+            # Aggressive memory cleanup after inference to prevent fragmentation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     
     async def _agenerate(
         self,
@@ -282,31 +287,27 @@ def _get_device_assignment(model_name: str) -> Union[str, dict]:
     except:
         gpu_mem_gb = 0
     
-    # Single GPU: Use auto with CPU offloading hint for large models
+    # Single GPU: Use strict isolation on GPU 0
     if num_gpus < 2:
-        # For large models (27B) on constrained GPUs (<24GB), enable CPU offloading
-        if "27b" in model_name.lower() and gpu_mem_gb < 24:
-            logger.warning(f"Large model (27B) on limited GPU ({gpu_mem_gb:.1f}GB). Enabling CPU offloading.")
-            device = "auto"  # Let accelerate handle offloading
-        else:
-            logger.info("Single GPU detected, using device_map='auto'")
-            device = "auto"
+        logger.info("Single GPU detected, using strict isolation on GPU 0")
+        device = {"": 0}  # Strict isolation - entire model on GPU 0
         _GPU_ASSIGNMENTS[model_name] = device
         return device
     
-    # Multi-GPU strategy: distribute by model size
-    # 27B models are ~16-18GB quantized, use 'auto' for smart offloading
-    # 4B models are ~3GB quantized, assign to cuda:0
+    # Strict GPU isolation strategy for 2x A10G setup
+    # Force each model to a single GPU to prevent fragmentation from multi-GPU splits
+    # 27B models: Force entirely onto GPU 0
+    # 4B models: Force entirely onto GPU 1
     if "27b" in model_name.lower():
-        device = "auto"  # Let accelerate handle multi-GPU/CPU offloading for large models
-        logger.info(f"Assigning 27B model to device_map='auto' for smart offloading")
+        device = {"":  0}  # Strict isolation - entire model on GPU 0
+        logger.info(f"Assigning 27B model to GPU 0 with strict isolation (device_map={{\"\":  0}})")
     elif "4b" in model_name.lower() or "1.5" in model_name.lower():
-        device = "cuda:0"  # First GPU for small model
-        logger.info(f"Assigning 4B model to {device} (first GPU)")
+        device = {"":  1}  # Strict isolation - entire model on GPU 1
+        logger.info(f"Assigning 4B model to GPU 1 with strict isolation (device_map={{\"\":  1}})")
     else:
-        # Unknown size, use auto
-        device = "auto"
-        logger.info(f"Unknown model size, using device_map='auto'")
+        # Unknown size, use GPU 0 with strict isolation
+        device = {"":  0}
+        logger.info(f"Unknown model size, assigning to GPU 0 with strict isolation")
     
     _GPU_ASSIGNMENTS[model_name] = device
     return device
@@ -439,29 +440,22 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             # Determine GPU assignment for multi-GPU load distribution
             device_map = _get_device_assignment(model_name)
             
+            # Aggressive memory cleanup before loading model
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            logger.info("Performed garbage collection and CUDA cache cleanup before model load")
+            
             try:
                 logger.info(f"Loading HuggingFace model: {model_name} (quantized={is_quantized}, device={device_map})")
                 
-                # Build model loading kwargs
+                # Build model loading kwargs with strict GPU isolation
                 model_kwargs = {
                     "device_map": device_map,
                     "trust_remote_code": True,
                     "low_cpu_mem_usage": True,  # Reduce CPU memory during loading
                 }
-                
-                # For device_map='auto', set max_memory to cap GPU usage at 90% and enable CPU offloading
-                if device_map == "auto" and torch.cuda.is_available():
-                    num_gpus = torch.cuda.device_count()
-                    max_memory = {}
-                    # Cap each GPU at 90% to leave buffer for CUDA operations
-                    for i in range(num_gpus):
-                        gpu_mem = torch.cuda.get_device_properties(i).total_memory
-                        max_gpu_mem = int(0.9 * gpu_mem)
-                        max_memory[i] = max_gpu_mem
-                    # Allow CPU offloading for overflow
-                    max_memory["cpu"] = "40GiB"
-                    model_kwargs["max_memory"] = max_memory
-                    logger.info(f"Setting max_memory for {num_gpus} GPU(s) with 90% cap and CPU offloading enabled")
+                # Note: Using strict device_map isolation - no max_memory needed
                 
                 # Add quantization config if using a bnb-4bit model
                 if is_quantized:
