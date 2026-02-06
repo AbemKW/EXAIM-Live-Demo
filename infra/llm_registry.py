@@ -247,9 +247,9 @@ def _get_device_assignment(model_name: str) -> Union[str, dict]:
     """Determine GPU device assignment for a model to distribute load across multiple GPUs.
     
     Strategy:
-    - 27B models (buffer_agent) -> cuda:1 (larger model on second GPU)
-    - 4B models (summarizer) -> cuda:0 (smaller model on first GPU)
-    - Falls back to "auto" if only 1 GPU or CUDA not available
+    - Multi-GPU (2+): Distribute 27B to cuda:1, 4B to cuda:0
+    - Single GPU: Use 'auto' with CPU offloading for large models (27B)
+    - No GPU: Use CPU
     
     Args:
         model_name: Name of the model being loaded
@@ -273,11 +273,24 @@ def _get_device_assignment(model_name: str) -> Union[str, dict]:
     num_gpus = torch.cuda.device_count()
     logger.info(f"Detected {num_gpus} CUDA device(s)")
     
-    # If only 1 GPU, use auto (let transformers handle it)
+    # Get available GPU memory
+    try:
+        gpu_mem_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        logger.info(f"GPU 0 total memory: {gpu_mem_gb:.2f} GB")
+    except:
+        gpu_mem_gb = 0
+    
+    # Single GPU: Use auto with CPU offloading hint for large models
     if num_gpus < 2:
-        logger.info("Single GPU detected, using device_map='auto'")
-        _GPU_ASSIGNMENTS[model_name] = "auto"
-        return "auto"
+        # For large models (27B) on constrained GPUs (<24GB), enable CPU offloading
+        if "27b" in model_name.lower() and gpu_mem_gb < 24:
+            logger.warning(f"Large model (27B) on limited GPU ({gpu_mem_gb:.1f}GB). Enabling CPU offloading.")
+            device = "auto"  # Let accelerate handle offloading
+        else:
+            logger.info("Single GPU detected, using device_map='auto'")
+            device = "auto"
+        _GPU_ASSIGNMENTS[model_name] = device
+        return device
     
     # Multi-GPU strategy: distribute by model size
     # 27B models are ~16-18GB quantized, assign to cuda:1
@@ -431,7 +444,19 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                 model_kwargs = {
                     "device_map": device_map,
                     "trust_remote_code": True,
+                    "low_cpu_mem_usage": True,  # Reduce CPU memory during loading
                 }
+                
+                # For single GPU with limited memory, set max_memory to enable CPU offloading
+                if device_map == "auto" and torch.cuda.is_available():
+                    num_gpus = torch.cuda.device_count()
+                    if num_gpus == 1:
+                        # Reserve some GPU memory for CUDA operations, allow CPU offload
+                        gpu_mem = torch.cuda.get_device_properties(0).total_memory
+                        # Use 90% of GPU memory, rest for CUDA overhead
+                        max_gpu_mem = int(0.9 * gpu_mem)
+                        model_kwargs["max_memory"] = {0: max_gpu_mem, "cpu": "40GiB"}
+                        logger.info(f"Single GPU mode: Setting max_memory to enable CPU offloading")
                 
                 # Add quantization config if using a bnb-4bit model
                 if is_quantized:
