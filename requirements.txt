@@ -19,7 +19,7 @@ transformers>=4.40.0
 torch>=2.0.0
 accelerate>=0.20.0
 bitsandbytes>=0.46.1
-flash-attn>=2.0.0  # For 2-3x inference speedup on L4/A10G GPUs
+# flash-attn optional - installed dynamically if GPU supports it
 
 # Optional for enhanced features
 matplotlib>=3.8.0

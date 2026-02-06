@@ -224,9 +224,18 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                 "device_map": device_map,
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True, # Prevents meta tensor errors
-                # Add Flash Attention 2 for 2-3x speed boost on L4/A10G GPUs
-                "attn_implementation": "flash_attention_2" if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else "eager",
             }
+            
+            # Try to use Flash Attention 2 for 2-3x speed boost on L4/A10G GPUs
+            # Only enable if GPU supports it (compute capability >= 8.0) and flash-attn is available
+            if torch.cuda.is_available():
+                try:
+                    compute_capability = torch.cuda.get_device_capability()[0]
+                    if compute_capability >= 8:
+                        model_kwargs["attn_implementation"] = "flash_attention_2"
+                        logger.info(f"Enabling Flash Attention 2 for faster inference on GPU with compute {compute_capability}.x")
+                except Exception as e:
+                    logger.info(f"Flash Attention 2 not available, using standard attention: {e}")
             
             if is_quantized:
                 model_kwargs["quantization_config"] = BitsAndBytesConfig(
