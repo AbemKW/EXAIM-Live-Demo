@@ -260,6 +260,23 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model_obj = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+
+            # Diagnostic logs: confirm device placement and GPU memory after loading
+            try:
+                if torch.cuda.is_available():
+                    logger.info(f"Model loaded. device_map={device_map}")
+                    logger.info(f"CUDA devices: count={torch.cuda.device_count()}, current_device={torch.cuda.current_device()}")
+                    try:
+                        logger.info(f"CUDA memory allocated: {torch.cuda.memory_allocated()/1024**2:.1f} MB, reserved: {torch.cuda.memory_reserved()/1024**2:.1f} MB")
+                    except Exception:
+                        logger.debug("Unable to read CUDA memory stats")
+                try:
+                    first_param = next(model_obj.parameters())
+                    logger.info(f"Model first param device: {first_param.device}")
+                except StopIteration:
+                    logger.debug("Model has no parameters to inspect")
+            except Exception as e:
+                logger.debug(f"Error while logging model device info: {e}")
             
             # Fix for missing pad token
             if tokenizer.pad_token_id is None: 
