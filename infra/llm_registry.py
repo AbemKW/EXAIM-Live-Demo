@@ -344,7 +344,6 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                     tensor_parallel_size=2,
                     trust_remote_code=True,
                     gpu_memory_utilization=0.90,
-                    dtype="half",             # <--- MOVED HERE (Top-level argument)
                     vllm_kwargs=vllm_kwargs,
                 )
 
