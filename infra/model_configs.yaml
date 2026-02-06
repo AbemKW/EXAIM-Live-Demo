@@ -22,13 +22,10 @@ summarizer:
 # Buffer Agent - Trace Trigger Decision
 # Used by: BufferAgent
 # Purpose: Decide when to trigger summarization based on trace completeness and novelty
-# Uses 27B model for rigorous analysis, quantized to 4-bit for memory efficiency
-# 
-# MEMORY-CONSTRAINED ENVIRONMENTS (HuggingFace Spaces with single GPU):
-# If you get OOM errors, set: BUFFER_AGENT_LLM_MODEL=unsloth/medgemma-1.5-4b-it-unsloth-bnb-4bit
-# This uses the smaller 4B model instead, reducing memory from ~16GB to ~3GB
+# Uses 4B model for fast, low-latency trigger decisions with minimal memory footprint
+# Shares GPU 1 with summarizer to maximize GPU efficiency and minimize fragmentation
 buffer_agent:
   provider: huggingface
-  model: unsloth/medgemma-27b-text-it-unsloth-bnb-4bit
+  model: unsloth/medgemma-1.5-4b-it-unsloth-bnb-4bit
   streaming: false
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL

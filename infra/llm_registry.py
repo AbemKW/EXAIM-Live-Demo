@@ -40,15 +40,17 @@ class HuggingFacePipelineLLM(BaseChatModel):
     pipeline: Any = None
     model_name: str = ""
     temperature: float = 0.0
+    role: str = ""
     
     class Config:
         arbitrary_types_allowed = True
     
-    def __init__(self, pipeline, model_name: str = "", temperature: float = 0.0, **kwargs):
+    def __init__(self, pipeline, model_name: str = "", temperature: float = 0.0, role: str = "", **kwargs):
         super().__init__(**kwargs)
         self.pipeline = pipeline
         self.model_name = model_name
         self.temperature = temperature
+        self.role = role
     
     @property
     def _llm_type(self) -> str:
@@ -115,22 +117,26 @@ class HuggingFacePipelineLLM(BaseChatModel):
 
         # --- Pipeline Invocation following official MedGemma docs ---
         try:
-            # Build generation kwargs - use max_new_tokens, avoid conflicts with generation_config
+            # Set max_new_tokens dynamically based on role
+            if "buffer" in self.role.lower():
+                max_new_tokens = 256  # Buffer agent: short trigger decision
+            else:
+                max_new_tokens = 1024  # Summarizer/other agents: longer outputs
+            
+            # Build generation kwargs - use ONLY max_new_tokens to avoid conflicts
             gen_kwargs = {
-                "max_new_tokens": 1024,
+                "max_new_tokens": max_new_tokens,
+                "max_length": None,  # Prevent conflicts with max_new_tokens
                 "return_full_text": False,  # Only return new tokens, not the input
             }
             
-            # Only add temperature/sampling if temperature > 0
-            if self.temperature is not None and self.temperature > 0:
+            # Enforce greedy decoding when temperature is 0 or None for deterministic output
+            if self.temperature is None or self.temperature == 0:
+                gen_kwargs["do_sample"] = False  # Greedy decoding
+            else:
+                # Use sampling with specified temperature
                 gen_kwargs["do_sample"] = True
                 gen_kwargs["temperature"] = self.temperature
-            else:
-                # Use subtle sampling for "deterministic" output instead of greedy decoding
-                # Greedy decoding (do_sample=False) can sometimes cause model loops/collapse
-                gen_kwargs["do_sample"] = True
-                gen_kwargs["temperature"] = 0.1
-                gen_kwargs["top_p"] = 0.95
 
             # Log the input for debugging (truncated)
             input_debug = str(hf_messages)
@@ -206,6 +212,7 @@ class HuggingFacePipelineLLM(BaseChatModel):
         
         This prevents the synchronous HuggingFace pipeline from blocking
         the async event loop when used in async contexts (FastAPI, Gradio, etc).
+        Critical for preventing buffer_agent from stalling the event loop.
         """
         import asyncio
         import sys
@@ -312,7 +319,7 @@ def _get_device_assignment(model_name: str) -> Union[str, dict]:
     return device
 
 
-def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None):
+def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None, role: str = ""):
     """Factory function to create LLM instances based on provider type.
     
     Args:
@@ -320,6 +327,7 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         model: Model name to use (overrides environment defaults)
         streaming: Whether to enable streaming
         temperature: Temperature parameter for LLM (None uses provider default)
+        role: Role name for role-aware optimizations (buffer_agent, summarizer, etc.)
         
     Returns:
         Configured LLM instance
@@ -522,7 +530,8 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         return HuggingFacePipelineLLM(
             pipeline=pipe,
             model_name=model_name,
-            temperature=temperature if temperature is not None else 0.0
+            temperature=temperature if temperature is not None else 0.0,
+            role=role
         )
     else:
         raise ValueError(
@@ -596,7 +605,8 @@ class LLMRegistry:
             provider=config["provider"],
             model=config.get("model"),
             streaming=config.get("streaming", True),
-            temperature=temperature
+            temperature=temperature,
+            role=role_str
         )
         
         # Cache and return

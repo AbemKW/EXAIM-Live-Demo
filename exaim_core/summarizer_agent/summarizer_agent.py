@@ -3,6 +3,7 @@ from exaim_core.schema.agent_summary import AgentSummary
 from typing import List, Dict, Any
 from pydantic import ValidationError
 import json
+import re
 import logging
 from infra import get_llm, LLMRole
 from exaim_core.utils.prompts import get_summarizer_system_prompt, get_summarizer_user_prompt
@@ -53,13 +54,28 @@ class SummarizerAgent:
                 else:
                     content = str(response)
                 
-                # Try to extract JSON
-                json_data = extract_json_from_text(content)
-                if json_data:
-                    # Don't catch ValidationError here - let it propagate for retry logic
-                    return AgentSummary(**json_data)
+                # Use regex to extract JSON block (handles XML tags and noise)
+                match = re.search(r"\{[\s\S]*\}", content)
+                if match:
+                    json_str = match.group(0)
+                    try:
+                        json_data = json.loads(json_str)
+                        return AgentSummary(**json_data)
+                    except (json.JSONDecodeError, ValidationError) as e:
+                        # Log raw output before failing
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Failed to parse extracted JSON: {e}")
+                        logger.error(f"Raw output (first 1000 chars): {content[:1000]}")
+                        raise
                 else:
-                    raise ValueError(f"Could not extract valid JSON from response: {content[:500]}")
+                    # Fallback to existing extraction logic
+                    json_data = extract_json_from_text(content)
+                    if json_data:
+                        return AgentSummary(**json_data)
+                    else:
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Could not extract JSON from response (first 1000 chars): {content[:1000]}")
+                        raise ValueError(f"Could not extract valid JSON from response: {content[:500]}")
             except ValidationError:
                 # Re-raise ValidationError as-is so retry logic can handle it
                 raise
