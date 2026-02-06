@@ -1,6 +1,8 @@
 """LLM Registry for EXAIM Infrastructure"""
-# Fix CUDA memory fragmentation before any torch imports
 import os
+# Ensure NCCL P2P is disabled in constrained multi-GPU environments (HF Spaces)
+os.environ.setdefault("NCCL_P2P_DISABLE", os.getenv("NCCL_P2P_DISABLE", "1"))
+# Fix CUDA memory fragmentation before any torch imports
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:128"
 import gc
 import yaml
@@ -17,6 +19,10 @@ import torch
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
+try:
+    from langchain_community.llms import VLLM
+except Exception:
+    VLLM = None
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -169,6 +175,124 @@ class HuggingFacePipelineLLM(BaseChatModel):
     def _identifying_params(self) -> Mapping[str, Any]:
         return {"model_name": self.model_name, "temperature": self.temperature, "role": self.role}
 
+
+class VLLMChatModel(BaseChatModel):
+    """LangChain-compatible wrapper around a vLLM engine for chat-style prompts.
+
+    Converts LangChain messages into a single prompt using MedGemma's turn markers,
+    invokes the vLLM engine, and returns a ChatResult.
+    """
+
+    vllm_engine: Any = None
+    model_name: str = ""
+    temperature: float = 0.0
+    role: str = ""
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def __init__(self, vllm_engine, model_name: str = "", temperature: float = 0.0, role: str = "", **kwargs):
+        super().__init__(**kwargs)
+        self.vllm_engine = vllm_engine
+        self.model_name = model_name
+        self.temperature = temperature
+        self.role = role
+
+    @property
+    def _llm_type(self) -> str:
+        return "vllm"
+
+    def _format_messages(self, messages: List[BaseMessage]) -> str:
+        if not messages:
+            return ""
+
+        system_instruction = ""
+        start_idx = 0
+        if isinstance(messages[0], SystemMessage):
+            system_instruction = messages[0].content
+            start_idx = 1
+
+        parts = []
+        # Attach system to first user if present
+        first_user_handled = False
+        for msg in messages[start_idx:]:
+            role = "assistant" if isinstance(msg, AIMessage) else "user"
+            content = msg.content
+            if not isinstance(content, (str, list)):
+                content = str(content)
+
+            if role == "user" and system_instruction and not first_user_handled:
+                if isinstance(content, str):
+                    content = f"{system_instruction}\n\n{content}"
+                first_user_handled = True
+
+            if role == "user":
+                parts.append(f"<start_of_turn>user\n{content}<end_of_turn>\n")
+            else:
+                parts.append(f"<start_of_turn>assistant\n{content}<end_of_turn>\n")
+
+        # If there was a system instruction but no user message, add it as a user turn
+        if system_instruction and not first_user_handled and not any(p.startswith("<start_of_turn>user") for p in parts):
+            parts.insert(0, f"<start_of_turn>user\n{system_instruction}<end_of_turn>\n")
+
+        parts.append("<start_of_turn>model\n")
+        return "".join(parts)
+
+    def _generate(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any) -> ChatResult:
+        prompt = self._format_messages(messages)
+        if not prompt:
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=""))])
+
+        max_new_tokens = kwargs.get("max_new_tokens", 1024)
+        temperature = None if (self.temperature is None or self.temperature < 1e-5) else float(self.temperature)
+
+        try:
+            # Prefer `invoke`, then `generate`, then callable
+            if hasattr(self.vllm_engine, "invoke"):
+                result = self.vllm_engine.invoke(prompt, max_tokens=max_new_tokens, temperature=temperature)
+            elif hasattr(self.vllm_engine, "generate"):
+                result = self.vllm_engine.generate(prompt, max_tokens=max_new_tokens, temperature=temperature)
+            else:
+                result = self.vllm_engine(prompt, max_tokens=max_new_tokens, temperature=temperature)
+
+            text_output = ""
+            if isinstance(result, dict) and "text" in result:
+                text_output = result.get("text", "")
+            elif isinstance(result, str):
+                text_output = result
+            else:
+                text_output = str(getattr(result, "text", result))
+
+            if not text_output or text_output.strip() == "":
+                logger.error(f"vLLM returned empty output for {self.role}")
+                text_output = "{}"
+
+            logger.info(f"vLLM Output ({self.role}): {text_output[:100]}...")
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=text_output))])
+
+        except Exception as e:
+            logger.exception(f"Error in VLLMChatModel._generate: {e}")
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=f"Error: {str(e)}"))])
+        finally:
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
+
+    async def _agenerate(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any) -> ChatResult:
+        import asyncio
+        import sys
+        if sys.version_info >= (3, 9):
+            return await asyncio.to_thread(self._generate, messages, stop, run_manager, **kwargs)
+        else:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, lambda: self._generate(messages, stop, run_manager, **kwargs))
+
+    @property
+    def _identifying_params(self) -> Mapping[str, Any]:
+        return {"model_name": self.model_name, "temperature": self.temperature, "role": self.role}
+
 _CONFIG_PATH = Path(__file__).parent / "model_configs.yaml"
 _DEFAULT_CONFIGS = None
 _HF_PIPELINE_CACHE = {}
@@ -199,90 +323,65 @@ def _get_device_assignment(model_name: str) -> Union[str, dict]:
 
 def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None, role: str = ""):
     provider = provider.lower()
+    model_name = model or os.getenv("HUGGINGFACE_MODEL", "google/medgemma-27b-text-it")
+
+    # vLLM provider: high-performance sharded inference across multiple GPUs
+    if provider == "vllm":
+        if VLLM is None:
+            raise ImportError("vLLM (langchain_community.llms.VLLM) is not installed or could not be imported")
+
+        # vLLM initialization parameters tuned for 2x A10G
+        vllm_kwargs = {
+            "quantization": "bitsandbytes",
+            "dtype": "half",
+        }
+
+        vllm = VLLM(
+            model=model_name,
+            tensor_parallel_size=2,
+            trust_remote_code=True,
+            gpu_memory_utilization=0.90,
+            vllm_kwargs=vllm_kwargs,
+        )
+
+        return VLLMChatModel(
+            vllm_engine=vllm,
+            model_name=model_name,
+            temperature=temperature if temperature is not None else 0.0,
+            role=role,
+        )
+
+    # Hugging Face fallback: keep as optional fallback but avoid manual device_map/bnb/flash logic
     if provider == "huggingface":
         try:
-            from transformers import pipeline as hf_pipeline, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+            from transformers import pipeline as hf_pipeline, AutoTokenizer, AutoModelForCausalLM
         except ImportError:
-            raise ImportError("transformers required")
+            raise ImportError("transformers required for huggingface provider fallback")
 
-        model_name = model or os.getenv("HUGGINGFACE_MODEL", "google/medgemma-27b-text-it")
         task = os.getenv("HUGGINGFACE_TASK", "text-generation")
         cache_key = f"{model_name}:{task}"
 
         if cache_key in _HF_PIPELINE_CACHE:
             pipe = _HF_PIPELINE_CACHE[cache_key]
         else:
-            is_quantized = "bnb-4bit" in model_name.lower()
-            model_dtype = torch.bfloat16 if "medgemma" in model_name.lower() else "auto"
-            device_map = _get_device_assignment(model_name)
-            
             gc.collect()
-            if torch.cuda.is_available(): torch.cuda.empty_cache()
-
-            # --- CRITICAL FIX FOR LOADING ---
-            model_kwargs = {
-                "device_map": device_map,
-                "trust_remote_code": True,
-                "low_cpu_mem_usage": True, # Prevents meta tensor errors
-            }
-            
-            # Try to use Flash Attention 2 for 2-3x speed boost on L4/A10G GPUs
-            # Only enable if GPU supports it (compute capability >= 8.0) and the
-            # runtime package `flash_attn` is importable. Transformers will raise
-            # if `attn_implementation` requests flash attention but the package
-            # isn't installed, so we must verify importability here.
             if torch.cuda.is_available():
-                try:
-                    compute_capability = torch.cuda.get_device_capability()[0]
-                    if compute_capability >= 8:
-                        # Only enable if flash_attn package is present
-                        try:
-                            import importlib
-                            importlib.import_module("flash_attn")
-                            model_kwargs["attn_implementation"] = "flash_attention_2"
-                            logger.info(f"Enabling Flash Attention 2 for faster inference on GPU with compute {compute_capability}.x")
-                        except Exception:
-                            logger.info("flash_attn package not found; skipping Flash Attention 2")
-                except Exception as e:
-                    logger.info(f"Unable to determine GPU compute capability: {e}")
-            
-            if is_quantized:
-                model_kwargs["quantization_config"] = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.bfloat16,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4"
-                )
-            else:
-                model_kwargs["torch_dtype"] = model_dtype
+                torch.cuda.empty_cache()
 
-            logger.info(f"Loading HF Model: {model_name} on {device_map}")
-            
+            model_kwargs = {
+                "trust_remote_code": True,
+                "low_cpu_mem_usage": True,
+            }
+            # prefer bfloat16 for MedGemma if available
+            if "medgemma" in model_name.lower():
+                model_kwargs["torch_dtype"] = torch.bfloat16
+
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model_obj = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
 
-            # Diagnostic logs: confirm device placement and GPU memory after loading
-            try:
-                if torch.cuda.is_available():
-                    logger.info(f"Model loaded. device_map={device_map}")
-                    logger.info(f"CUDA devices: count={torch.cuda.device_count()}, current_device={torch.cuda.current_device()}")
-                    try:
-                        logger.info(f"CUDA memory allocated: {torch.cuda.memory_allocated()/1024**2:.1f} MB, reserved: {torch.cuda.memory_reserved()/1024**2:.1f} MB")
-                    except Exception:
-                        logger.debug("Unable to read CUDA memory stats")
-                try:
-                    first_param = next(model_obj.parameters())
-                    logger.info(f"Model first param device: {first_param.device}")
-                except StopIteration:
-                    logger.debug("Model has no parameters to inspect")
-            except Exception as e:
-                logger.debug(f"Error while logging model device info: {e}")
-            
-            # Fix for missing pad token
-            if tokenizer.pad_token_id is None: 
+            if tokenizer.pad_token_id is None:
                 tokenizer.pad_token_id = tokenizer.eos_token_id
-            
-            # Explicitly resize embeddings if needed (Fixes missing lm_head in some edge cases)
+
             model_obj.resize_token_embeddings(len(tokenizer))
 
             pipe = hf_pipeline(task, model=model_obj, tokenizer=tokenizer)
@@ -292,7 +391,7 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             pipeline=pipe,
             model_name=model_name,
             temperature=temperature if temperature is not None else 0.0,
-            role=role
+            role=role,
         )
     
     if provider == "google": return ChatGoogleGenerativeAI(model=model or "gemini-2.5-flash-lite", google_api_key=os.getenv("GOOGLE_API_KEY"))
