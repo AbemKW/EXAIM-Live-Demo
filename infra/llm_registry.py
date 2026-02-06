@@ -297,6 +297,7 @@ _CONFIG_PATH = Path(__file__).parent / "model_configs.yaml"
 _DEFAULT_CONFIGS = None
 _HF_PIPELINE_CACHE = {}
 _GPU_ASSIGNMENTS = {}
+_VLLM_ENGINE_CACHE = {}
 
 def _load_default_configs():
     global _DEFAULT_CONFIGS
@@ -331,43 +332,44 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             logger.warning("vLLM package not found. Falling back to HuggingFace.")
             provider = "huggingface"
         else:
-            # --- DYNAMIC CONFIGURATION START ---
-            
-            # 1. Determine Tensor Parallelism (TP)
-            # 27B needs 2 GPUs. 4B needs 1 GPU (and crashes with 2 if pre-quantized).
-            if "27b" in model_name.lower():
-                tp_size = 2
+            # --- SINGLETON PATTERN: reuse engine per model_name ---
+            if model_name in _VLLM_ENGINE_CACHE:
+                logger.info(f"Reusing existing vLLM engine for {model_name}")
+                vllm = _VLLM_ENGINE_CACHE[model_name]
             else:
-                tp_size = 1
+                logger.info(f"Initializing NEW vLLM engine for {model_name}")
 
-            # 2. Configure Quantization
-            # If the model is ALREADY 4-bit (like the unsloth one), don't force quantization again.
-            vllm_kwargs = {}
-            if "bnb-4bit" not in model_name.lower() and "awq" not in model_name.lower():
-                # Force quantization only for the big 27B model to make it fit
-                vllm_kwargs["quantization"] = "bitsandbytes"
+                # Dynamic TP sizing: 27B -> 2 GPUs, otherwise 1
+                if "27b" in model_name.lower():
+                    tp_size = 2
+                else:
+                    tp_size = 1
 
-            # --- DYNAMIC CONFIGURATION END ---
+                vllm_kwargs = {}
+                if "bnb-4bit" not in model_name.lower() and "awq" not in model_name.lower():
+                    vllm_kwargs["quantization"] = "bitsandbytes"
 
-            try:
-                vllm = VLLM(
-                    model=model_name,
-                    tensor_parallel_size=tp_size,  # Dynamic size (1 or 2)
-                    trust_remote_code=True,
-                    gpu_memory_utilization=0.90,
-                    dtype="bfloat16",              # Required for Gemma models
-                    vllm_kwargs=vllm_kwargs,
-                )
+                try:
+                    vllm = VLLM(
+                        model=model_name,
+                        tensor_parallel_size=tp_size,
+                        trust_remote_code=True,
+                        gpu_memory_utilization=0.90,
+                        dtype="bfloat16",
+                        vllm_kwargs=vllm_kwargs,
+                    )
+                    _VLLM_ENGINE_CACHE[model_name] = vllm
+                except Exception as e:
+                    logger.error(f"Failed to initialize vLLM: {e}. Falling back to HuggingFace.")
+                    provider = "huggingface"
 
+            if provider == "vllm":
                 return VLLMChatModel(
                     vllm_engine=vllm,
                     model_name=model_name,
                     temperature=temperature if temperature is not None else 0.0,
                     role=role,
                 )
-            except Exception as e:
-                logger.error(f"Failed to initialize vLLM: {e}. Falling back to HuggingFace.")
-                provider = "huggingface"
 
     # Hugging Face fallback...
     if provider == "huggingface":
