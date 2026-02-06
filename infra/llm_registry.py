@@ -117,7 +117,7 @@ class HuggingFacePipelineLLM(BaseChatModel):
         try:
             # Build generation kwargs - use max_new_tokens, avoid conflicts with generation_config
             gen_kwargs = {
-                "max_new_tokens": 2048,
+                "max_new_tokens": 1024,
                 "max_length": 8192,  # Set high max_length to override restrictive default (20)
                 "return_full_text": False,  # Only return new tokens, not the input
             }
@@ -449,32 +449,33 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             try:
                 logger.info(f"Loading HuggingFace model: {model_name} (quantized={is_quantized})")
                 
-                # Hybrid Loading Strategy: Different approach for 27B vs 4B models
+                # Strict Manual GPU Assignment: 27B->GPU0, 4B->GPU1
+                # Both models fit entirely on a single A10G (24GB)
                 is_large_model = "27b" in model_name.lower()
                 is_small_model = "4b" in model_name.lower() or "1.5" in model_name.lower()
                 
                 if is_large_model:
-                    # Hybrid strategy for 27B: Split across both GPUs to avoid single-GPU OOM
-                    logger.info("Using Hybrid strategy for 27B model (auto split across both GPUs)")
+                    # 27B model: Assign entirely to GPU 0
+                    logger.info("Assigning 27B model entirely to GPU 0 (strict manual assignment)")
                     model_kwargs = {
-                        "device_map": "auto",  # Let accelerate split intelligently
-                        "max_memory": {0: "18GiB", 1: "10GiB", "cpu": "60GiB"},  # GPU 1 reduced to leave room for 4B model
+                        "device_map": {"":  0},  # Strict: entire model on GPU 0
+                        "max_memory": {0: "22GiB", 1: "22GiB", "cpu": "60GiB"},  # Safety guardrails
                         "trust_remote_code": True,
-                        "low_cpu_mem_usage": True,
+                        "low_cpu_mem_usage": True,  # Works correctly with explicit device_map
                     }
                 elif is_small_model:
-                    # Direct load strategy for 4B: Bypass meta device by disabling low_cpu_mem_usage
-                    logger.info("Using direct load strategy for 4B model (load directly to cuda:1)")
+                    # 4B model: Assign entirely to GPU 1
+                    logger.info("Assigning 4B model entirely to GPU 1 (strict manual assignment)")
                     model_kwargs = {
-                        "device_map": "cuda:1",  # Load directly to GPU 1
+                        "device_map": {"":  1},  # Strict: entire model on GPU 1
                         "trust_remote_code": True,
-                        "low_cpu_mem_usage": False,  # Bypass meta device to avoid "Cannot copy" error
+                        "low_cpu_mem_usage": True,  # Works correctly with explicit device_map
                     }
                 else:
-                    # Fallback for unknown models
-                    logger.warning(f"Unknown model size, using default strategy")
+                    # Fallback for unknown models: assign to GPU 0
+                    logger.warning(f"Unknown model size, assigning to GPU 0 with strict isolation")
                     model_kwargs = {
-                        "device_map": "auto",
+                        "device_map": {"":  0},
                         "trust_remote_code": True,
                         "low_cpu_mem_usage": True,
                     }
