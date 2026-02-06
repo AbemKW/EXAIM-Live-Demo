@@ -328,30 +328,37 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
     # vLLM provider: high-performance sharded inference across multiple GPUs
     if provider == "vllm":
         if VLLM is None:
-            raise ImportError("vLLM (langchain_community.llms.VLLM) is not installed or could not be imported")
+            # Fallback logic if vLLM package is missing
+            logger.warning("vLLM package not found. Falling back to HuggingFace.")
+            provider = "huggingface"
+        else:
+            # vLLM initialization parameters tuned for 2x A10G
+            # REMOVED "dtype" from here to prevent collision
+            vllm_kwargs = {
+                "quantization": "bitsandbytes", 
+            }
 
-        # vLLM initialization parameters tuned for 2x A10G
-        vllm_kwargs = {
-            "quantization": "bitsandbytes",
-            "dtype": "half",
-        }
+            try:
+                vllm = VLLM(
+                    model=model_name,
+                    tensor_parallel_size=2,
+                    trust_remote_code=True,
+                    gpu_memory_utilization=0.90,
+                    dtype="half",             # <--- MOVED HERE (Top-level argument)
+                    vllm_kwargs=vllm_kwargs,
+                )
 
-        vllm = VLLM(
-            model=model_name,
-            tensor_parallel_size=2,
-            trust_remote_code=True,
-            gpu_memory_utilization=0.90,
-            vllm_kwargs=vllm_kwargs,
-        )
+                return VLLMChatModel(
+                    vllm_engine=vllm,
+                    model_name=model_name,
+                    temperature=temperature if temperature is not None else 0.0,
+                    role=role,
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize vLLM: {e}. Falling back to HuggingFace.")
+                provider = "huggingface"
 
-        return VLLMChatModel(
-            vllm_engine=vllm,
-            model_name=model_name,
-            temperature=temperature if temperature is not None else 0.0,
-            role=role,
-        )
-
-    # Hugging Face fallback: keep as optional fallback but avoid manual device_map/bnb/flash logic
+    # Hugging Face fallback...
     if provider == "huggingface":
         try:
             from transformers import pipeline as hf_pipeline, AutoTokenizer, AutoModelForCausalLM
