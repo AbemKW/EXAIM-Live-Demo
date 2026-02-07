@@ -247,13 +247,18 @@ class VLLMChatModel(BaseChatModel):
         temperature = None if (self.temperature is None or self.temperature < 1e-5) else float(self.temperature)
 
         try:
+            # Prepare generation kwargs - only include temperature if it's not None
+            gen_kwargs = {"max_tokens": max_new_tokens}
+            if temperature is not None:
+                gen_kwargs["temperature"] = temperature
+            
             # Prefer `invoke`, then `generate`, then callable
             if hasattr(self.vllm_engine, "invoke"):
-                result = self.vllm_engine.invoke(prompt, max_tokens=max_new_tokens, temperature=temperature)
+                result = self.vllm_engine.invoke(prompt, **gen_kwargs)
             elif hasattr(self.vllm_engine, "generate"):
-                result = self.vllm_engine.generate(prompt, max_tokens=max_new_tokens, temperature=temperature)
+                result = self.vllm_engine.generate(prompt, **gen_kwargs)
             else:
-                result = self.vllm_engine(prompt, max_tokens=max_new_tokens, temperature=temperature)
+                result = self.vllm_engine(prompt, **gen_kwargs)
 
             text_output = ""
             if isinstance(result, dict) and "text" in result:
