@@ -115,6 +115,7 @@ def extract_json_with_cot_fallback(text: str) -> Optional[dict]:
 
     # Work on a copy
     cleaned = str(text)
+    original_text = cleaned  # Keep for fallback debugging
 
     # 1) Remove tag-wrapped reasoning blocks: <unused123>...</unused123>
     cleaned = re.sub(r'<unused\d+>.*?</unused\d+>', '', cleaned, flags=re.DOTALL)
@@ -182,7 +183,46 @@ def extract_json_with_cot_fallback(text: str) -> Optional[dict]:
         except json.JSONDecodeError:
             pass
 
-    # 8) Last resort: delegate to older extractor which has additional heuristics
+    # 8) ULTRA AGGRESSIVE: Try to find JSON in the ORIGINAL text by looking for
+    #    patterns like "rationale", "stream_state", "is_complete" etc. which
+    #    are BufferAnalysis field names
+    if '"rationale"' in original_text or '"stream_state"' in original_text:
+        # Find the first { after any of these field names
+        for field in ['"rationale"', '"stream_state"', '"is_complete"', '"is_relevant"', '"is_novel"']:
+            field_pos = original_text.find(field)
+            if field_pos != -1:
+                # Search backward to find the opening {
+                brace_pos = original_text.rfind('{', 0, field_pos)
+                if brace_pos != -1:
+                    # Use brace matching from this position
+                    brace_count = 0
+                    in_string = False
+                    escape_next = False
+                    for i in range(brace_pos, len(original_text)):
+                        char = original_text[i]
+                        if escape_next:
+                            escape_next = False
+                            continue
+                        if char == '\\':
+                            escape_next = True
+                            continue
+                        if char == '"':
+                            in_string = not in_string
+                            continue
+                        if not in_string:
+                            if char == '{':
+                                brace_count += 1
+                            elif char == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    candidate = original_text[brace_pos:i+1]
+                                    try:
+                                        return json.loads(candidate)
+                                    except json.JSONDecodeError:
+                                        break
+                break
+
+    # 9) Last resort: delegate to older extractor which has additional heuristics
     try:
         return extract_json_from_text(text)
     except Exception:

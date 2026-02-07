@@ -335,6 +335,12 @@ def get_buffer_agent_system_prompt() -> str:
          </decision_dimensions>
 
          <output_contract>
+         CRITICAL: You MUST respond with ONLY a valid JSON object. Do NOT include any reasoning, thoughts, explanations, or commentary before or after the JSON.
+         Do NOT use special tokens like <unused94> or <thought> tags. 
+         Do NOT wrap JSON in markdown code blocks (no ```json or ``` markers).
+         
+         Start your response IMMEDIATELY with the opening brace { and end with the closing brace }.
+         
          You MUST produce output that conforms exactly to the structured schema requested by the system (tool/typed output).
          If the system supports structured output, use it directly.
          If not, output ONLY a valid JSON object with the required fields. For BufferAnalysis:
@@ -345,12 +351,13 @@ def get_buffer_agent_system_prompt() -> str:
            "is_novel": true/false,
            "is_complete": true/false
          }}
-         Do not wrap JSON in markdown code blocks. Do not output additional keys. Do not include commentary outside the structured fields.
 
          Rules:
          - For the 'rationale' field: brief (<=240 chars), reference completeness/relevance/novelty/stream_state.
          - Focus on accurately assessing the primitives (stream_state, is_complete, is_relevant, is_novel). The trigger decision is computed deterministically in code.
          - Your booleans must be conservative: if uncertain, set is_complete/is_novel/is_relevant = false.
+         
+         REMINDER: Output ONLY the JSON object. No preamble, no explanation, no special tokens.
          </output_contract>
          """
 
@@ -489,6 +496,12 @@ def get_buffer_agent_system_prompt_no_novelty() -> str:
          </decision_dimensions>
 
          <output_contract>
+         CRITICAL: You MUST respond with ONLY a valid JSON object. Do NOT include any reasoning, thoughts, explanations, or commentary before or after the JSON.
+         Do NOT use special tokens like <unused94> or <thought> tags.
+         Do NOT wrap JSON in markdown code blocks (no ```json or ``` markers).
+         
+         Start your response IMMEDIATELY with the opening brace { and end with the closing brace }.
+         
          You MUST produce output that conforms exactly to the structured schema requested by the system (tool/typed output).
          If the system supports structured output, use it directly.
          If not, output ONLY a valid JSON object with the required fields. For BufferAnalysisNoNovelty:
@@ -498,11 +511,12 @@ def get_buffer_agent_system_prompt_no_novelty() -> str:
            "is_relevant": true/false,
            "is_complete": true/false
          }}
-         Do not wrap JSON in markdown code blocks. Do not output additional keys. Do not include commentary outside the structured fields.
 
          Rules:
          - For the 'rationale' field: brief (<=240 chars), reference completeness/relevance/stream_state.
          - Focus on accurately assessing the primitives (stream_state, is_complete, is_relevant). The trigger decision is computed deterministically in code.
          - Your booleans must be conservative: if uncertain, set is_complete/is_relevant = false.
+         
+         REMINDER: Output ONLY the JSON object. No preamble, no explanation, no special tokens.
          </output_contract>
          """

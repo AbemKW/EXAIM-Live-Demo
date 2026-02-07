@@ -187,16 +187,18 @@ class VLLMChatModel(BaseChatModel):
     model_name: str = ""
     temperature: float = 0.0
     role: str = ""
+    guided_json_schema: Optional[dict] = None
 
     class Config:
         arbitrary_types_allowed = True
 
-    def __init__(self, vllm_engine, model_name: str = "", temperature: float = 0.0, role: str = "", **kwargs):
+    def __init__(self, vllm_engine, model_name: str = "", temperature: float = 0.0, role: str = "", guided_json_schema: Optional[dict] = None, **kwargs):
         super().__init__(**kwargs)
         self.vllm_engine = vllm_engine
         self.model_name = model_name
         self.temperature = temperature
         self.role = role
+        self.guided_json_schema = guided_json_schema
 
     @property
     def _llm_type(self) -> str:
@@ -251,6 +253,18 @@ class VLLMChatModel(BaseChatModel):
             gen_kwargs = {"max_tokens": max_new_tokens}
             if temperature is not None:
                 gen_kwargs["temperature"] = temperature
+            
+            # For buffer agent, add skip_special_tokens to prevent <unused> tokens
+            if self.role == "buffer_agent":
+                gen_kwargs["skip_special_tokens"] = True
+                # Also set a stop sequence to prevent CoT reasoning
+                gen_kwargs["stop"] = ["<unused", "\n\nAlternatively", "\n\nLet me", "Let me think"]
+                logger.info(f"Buffer agent: using skip_special_tokens=True and stop sequences")
+            
+            # Use guided JSON if schema is provided (for buffer agent)
+            if self.guided_json_schema is not None:
+                gen_kwargs["guided_json"] = self.guided_json_schema
+                logger.info(f"Using guided JSON generation for {self.role}")
             
             # Prefer `invoke`, then `generate`, then callable
             if hasattr(self.vllm_engine, "invoke"):
@@ -380,11 +394,24 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                     provider = "huggingface"
 
             if provider == "vllm":
+                # Generate JSON schema for buffer agent guided decoding
+                guided_json_schema = None
+                if role == LLMRole.BUFFER_AGENT:
+                    # Import the schema classes
+                    try:
+                        from exaim_core.schema.buffer_analysis import BufferAnalysis
+                        # Get the Pydantic schema and convert to dict
+                        guided_json_schema = BufferAnalysis.model_json_schema()
+                        logger.info(f"Using guided JSON for buffer agent with schema: {list(guided_json_schema.get('properties', {}).keys())}")
+                    except Exception as e:
+                        logger.warning(f"Could not generate guided JSON schema for buffer agent: {e}")
+                
                 return VLLMChatModel(
                     vllm_engine=vllm,
                     model_name=model_name,
                     temperature=temperature if temperature is not None else 0.0,
                     role=role,
+                    guided_json_schema=guided_json_schema,
                 )
 
     # Hugging Face fallback...
