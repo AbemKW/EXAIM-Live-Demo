@@ -86,6 +86,9 @@ connections_lock = asyncio.Lock()
 active_run_ids: Dict[str, str] = {}
 run_ids_lock = asyncio.Lock()
 
+# Task reference tracking to prevent GC for fire-and-forget WebSocket sends
+websocket_send_tasks: set = set()
+
 
 async def get_active_connections() -> List[WebSocket]:
     """Get a copy of the active connections list safely."""
@@ -378,8 +381,10 @@ def trace_callback(agent_id: str, token: str):
     try:
         # Try to get the running event loop - will succeed if called from async context
         asyncio.get_running_loop()
-        # Schedule the send immediately as a task
-        asyncio.create_task(send_token_direct(agent_id, token))
+        # Schedule the send immediately as a task with reference to prevent GC
+        task = asyncio.create_task(send_token_direct(agent_id, token))
+        websocket_send_tasks.add(task)
+        task.add_done_callback(websocket_send_tasks.discard)
     except RuntimeError:
         # No running event loop - unexpected but log warning and fallback to queue
         logger.warning(f"No running event loop in trace_callback for agent {agent_id} - using queue fallback")
@@ -445,8 +450,10 @@ def summary_callback(summary):
     try:
         # Try to get the running event loop - will succeed if called from async context
         asyncio.get_running_loop()
-        # Schedule the send immediately as a task
-        asyncio.create_task(send_summary_direct(summary))
+        # Schedule the send immediately as a task with reference to prevent GC
+        task = asyncio.create_task(send_summary_direct(summary))
+        websocket_send_tasks.add(task)
+        task.add_done_callback(websocket_send_tasks.discard)
     except RuntimeError:
         # No running event loop - unexpected but log warning and fallback to queue
         logger.warning("No running event loop in summary_callback - using queue fallback")
