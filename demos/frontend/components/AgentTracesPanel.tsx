@@ -32,6 +32,7 @@ export default function AgentTracesPanel() {
   const activeAgents = useActiveAgents();
   const consoleRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  const isProgrammaticScrollRef = useRef(false);
   const [showGoToLatest, setShowGoToLatest] = useState(false);
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -59,6 +60,9 @@ export default function AgentTracesPanel() {
     if (!consoleRef.current) return;
     const container = consoleRef.current;
     
+    // Mark as programmatic scroll to prevent handleScroll from disabling auto-scroll
+    isProgrammaticScrollRef.current = true;
+    
     // Direct scroll assignment
     container.scrollTop = container.scrollHeight;
     
@@ -67,6 +71,11 @@ export default function AgentTracesPanel() {
       top: container.scrollHeight,
       behavior: 'auto'
     });
+    
+    // Reset flag after a short delay to allow scroll event to fire
+    setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, 100);
   }, []);
 
   // Handle "Go to Latest" button click
@@ -85,6 +94,11 @@ export default function AgentTracesPanel() {
 
     const handleScroll = () => {
       if (!container) return;
+      
+      // Ignore scroll events caused by programmatic scrolling
+      if (isProgrammaticScrollRef.current) {
+        return;
+      }
       
       // Clear any pending checks
       if (scrollCheckTimeout) {
@@ -135,8 +149,8 @@ export default function AgentTracesPanel() {
     let timeoutId: NodeJS.Timeout | null = null;
     
     const observer = new MutationObserver(() => {
-      // Only scroll if auto-scroll is enabled and user is at bottom
-      if (shouldAutoScrollRef.current && isAtBottom(container)) {
+      // Only scroll if auto-scroll is enabled
+      if (shouldAutoScrollRef.current) {
         // Clear any pending scrolls
         if (rafId) cancelAnimationFrame(rafId);
         if (timeoutId) clearTimeout(timeoutId);
@@ -148,12 +162,6 @@ export default function AgentTracesPanel() {
             rafId = null;
           });
         });
-        
-        // Also use timeout as backup
-        timeoutId = setTimeout(() => {
-          scrollToBottom();
-          timeoutId = null;
-        }, 10);
       }
     });
 
@@ -172,29 +180,15 @@ export default function AgentTracesPanel() {
 
   // Trigger scroll when content actually changes - only if auto-scroll is enabled
   useEffect(() => {
-    const container = consoleRef.current;
-    if (!container) return;
-    
     if (agents.length > 0 && shouldAutoScrollRef.current) {
-      // Check if we're already at bottom before scrolling
-      const atBottom = isAtBottom(container);
-      
-      if (atBottom) {
-        // Multiple timing strategies to ensure DOM has updated
+      // Use RAF to ensure DOM has updated before scrolling
+      requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            scrollToBottom();
-          });
-        });
-        
-        const timeoutId = setTimeout(() => {
           scrollToBottom();
-        }, 10);
-        
-        return () => clearTimeout(timeoutId);
-      }
+        });
+      });
     }
-  }, [agentsContentKey, scrollToBottom, isAtBottom]);
+  }, [agentsContentKey, scrollToBottom]);
 
   // Initial scroll to bottom when first agents appear
   useEffect(() => {
