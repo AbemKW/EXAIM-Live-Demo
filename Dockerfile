@@ -75,6 +75,10 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY start_backend.sh /app/start_backend.sh
 RUN chmod +x /app/start_backend.sh
 
+# Copy startup barrier script for nginx (waits for all services to be ready)
+COPY wait-for-all-services.sh /app/wait-for-all-services.sh
+RUN chmod +x /app/wait-for-all-services.sh
+
 # Create writable directories for non-root user
 RUN mkdir -p /tmp/nginx /var/lib/nginx /var/log/nginx \
     && chmod -R 777 /tmp /var/lib/nginx /var/log/nginx
@@ -96,7 +100,7 @@ ENV LOGNAME=appuser
 ENV OPENAI_BASE_URL=http://localhost:8001/v1
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
-    CMD curl -f http://localhost:7860/health || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Start supervisor to manage all services (backend, Next.js, nginx)
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

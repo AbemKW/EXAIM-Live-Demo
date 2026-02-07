@@ -6,7 +6,11 @@ import type { CaseRequest, DemoMode, TraceFile } from '@/lib/types';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 
-export default function CaseInput() {
+interface CaseInputProps {
+  onError?: (message: string) => void;
+}
+
+export default function CaseInput({ onError }: CaseInputProps) {
   const [caseText, setCaseText] = useState('');
   const [mode, setMode] = useState<DemoMode>('live_demo');
   const [traces, setTraces] = useState<TraceFile[]>([]);
@@ -99,6 +103,17 @@ export default function CaseInput() {
       console.log('Response status:', response.status);
 
       if (!response.ok) {
+        // Check for vLLM unavailability (503 status)
+        if (response.status === 503) {
+          const errorMessage = 'AI model service is currently unavailable. Please try again in a moment.';
+          if (onError) {
+            onError(errorMessage);
+          } else {
+            alert(errorMessage);
+          }
+          return;
+        }
+        
         const error = await response.json();
         throw new Error(error.detail || 'Failed to process case');
       }

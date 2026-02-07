@@ -13,10 +13,13 @@ import { useCDSSStore } from '@/store/cdssStore';
 export default function Home() {
   const [currentPage, setCurrentPage] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const wheelTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastWheelTimeRef = useRef<number>(0);
   const toggleSummary = useCDSSStore((state) => state.toggleSummary);
+  const wsStatus = useCDSSStore((state) => state.wsStatus);
 
   // Initialize WebSocket connection on mount
   useEffect(() => {
@@ -31,6 +34,13 @@ export default function Home() {
       }
     };
   }, []);
+
+  // Track initial loading state - clear after WebSocket connects
+  useEffect(() => {
+    if (wsStatus === 'connected' && isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [wsStatus, isInitialLoad]);
 
   // Handle wheel events for carousel navigation
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -96,6 +106,31 @@ export default function Home() {
       {/* Fixed Header */}
       <Header />
 
+      {/* System Initializing Banner */}
+      {isInitialLoad && wsStatus === 'connecting' && (
+        <div className="fixed top-[var(--header-height)] left-0 right-0 z-50 bg-blue-600 text-white px-6 py-3 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            <span>System initializing, please wait...</span>
+          </div>
+        </div>
+      )}
+
+      {/* vLLM Unavailability Error Banner */}
+      {apiError && (
+        <div className="fixed top-[var(--header-height)] left-0 right-0 z-50 bg-red-600 text-white px-6 py-3">
+          <div className="flex items-center justify-between max-w-7xl mx-auto">
+            <span>{apiError}</span>
+            <button
+              onClick={() => setApiError(null)}
+              className="ml-4 px-3 py-1 bg-red-700 hover:bg-red-800 rounded text-sm"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Carousel Container */}
       <main 
         ref={containerRef}
@@ -110,7 +145,7 @@ export default function Home() {
           }}
         >
           <div className="w-full max-w-3xl">
-            <CaseInput />
+            <CaseInput onError={setApiError} />
           </div>
         </section>
 

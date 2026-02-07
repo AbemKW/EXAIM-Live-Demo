@@ -4,6 +4,8 @@ import subprocess
 import sys
 import os
 import uuid
+import time
+import httpx
 from pathlib import Path
 from typing import List, Dict
 from datetime import datetime
@@ -52,6 +54,13 @@ async def lifespan(app: FastAPI):
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Health check cache
+_health_cache = {
+    "status": "unknown",
+    "vllm": "unknown",
+    "timestamp": 0.0,
+}
+_health_cache_ttl = 10.0  # Cache for 10 seconds
 
 app = FastAPI(lifespan=lifespan)
 
@@ -95,6 +104,93 @@ async def remove_connection(websocket: WebSocket):
     async with connections_lock:
         if websocket in active_connections:
             active_connections.remove(websocket)
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint that verifies vLLM availability.
+    
+    Returns:
+        200 OK if backend and vLLM are both healthy
+        503 Service Unavailable if vLLM is not available
+    
+    Response is cached for 10 seconds to reduce load on vLLM.
+    """
+    global _health_cache
+    
+    current_time = time.time()
+    
+    # Return cached result if still valid
+    if current_time - _health_cache["timestamp"] < _health_cache_ttl:
+        if _health_cache["status"] == "healthy":
+            return {
+                "status": _health_cache["status"],
+                "vllm": _health_cache["vllm"],
+                "cached": True
+            }
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "status": _health_cache["status"],
+                    "vllm": _health_cache["vllm"],
+                    "cached": True
+                }
+            )
+    
+    # Check vLLM availability
+    vllm_url = os.environ.get("OPENAI_BASE_URL", "http://localhost:8001/v1")
+    models_endpoint = f"{vllm_url}/models"
+    
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(models_endpoint)
+            
+            if response.status_code == 200:
+                # vLLM is healthy
+                _health_cache = {
+                    "status": "healthy",
+                    "vllm": "ready",
+                    "timestamp": current_time
+                }
+                return {
+                    "status": "healthy",
+                    "vllm": "ready",
+                    "cached": False
+                }
+            else:
+                # vLLM returned non-200 status
+                _health_cache = {
+                    "status": "unhealthy",
+                    "vllm": "unavailable",
+                    "timestamp": current_time
+                }
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "status": "unhealthy",
+                        "vllm": "unavailable",
+                        "cached": False
+                    }
+                )
+    except Exception as e:
+        # vLLM connection failed
+        logger.warning(f"vLLM health check failed: {e}")
+        _health_cache = {
+            "status": "unhealthy",
+            "vllm": "unavailable",
+            "timestamp": current_time
+        }
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "unhealthy",
+                "vllm": "unavailable",
+                "error": str(e),
+                "cached": False
+            }
+        )
+
 
 # Global CDSS instance for the current request.
 # Note: This is intentionally request-scoped - each POST to /api/process-case creates

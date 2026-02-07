@@ -36,8 +36,8 @@ function validateWebSocketUrl(url: string | undefined): string {
 }
 
 // Constants
-const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_DELAY_MS = 3000;
+const MAX_RECONNECT_ATTEMPTS = 25;
+const RECONNECT_DELAY_MS = 6000;
 
 /**
  * WebSocket service for real-time communication with the EXAID backend.
