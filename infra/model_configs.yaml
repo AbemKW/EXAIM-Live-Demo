@@ -14,8 +14,8 @@ mas:
 # Used by: SummarizerAgent
 # Purpose: Generate structured clinical summaries from agent traces
 summarizer:
-  provider: vllm
-  model: unsloth/medgemma-1.5-4b-it-unsloth-bnb-4bit
+  provider: google
+  model:  gemini-2.5-flash-lite
   streaming: true
   # Env overrides: SUMMARIZER_LLM_PROVIDER, SUMMARIZER_LLM_MODEL
 
@@ -25,7 +25,7 @@ summarizer:
 # Uses 4B model for fast, low-latency trigger decisions with minimal memory footprint
 # Shares GPU 1 with summarizer to maximize GPU efficiency and minimize fragmentation
 buffer_agent:
-  provider: vllm
-  model: unsloth/medgemma-1.5-4b-it-unsloth-bnb-4bit
-  streaming: false
+  provider: google
+  model:  gemini-2.5-flash-lite
+  streaming: true
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL

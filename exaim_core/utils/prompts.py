@@ -339,7 +339,7 @@ def get_buffer_agent_system_prompt() -> str:
          Do NOT use special tokens like <unused94> or <thought> tags. 
          Do NOT wrap JSON in markdown code blocks (no ```json or ``` markers).
          
-         Start your response IMMEDIATELY with the opening brace { and end with the closing brace }.
+         Start your response IMMEDIATELY with the opening brace {{ and end with the closing brace }}.
          
          You MUST produce output that conforms exactly to the structured schema requested by the system (tool/typed output).
          If the system supports structured output, use it directly.
@@ -500,7 +500,7 @@ def get_buffer_agent_system_prompt_no_novelty() -> str:
          Do NOT use special tokens like <unused94> or <thought> tags.
          Do NOT wrap JSON in markdown code blocks (no ```json or ``` markers).
          
-         Start your response IMMEDIATELY with the opening brace { and end with the closing brace }.
+         Start your response IMMEDIATELY with the opening brace {{ and end with the closing brace }}.
          
          You MUST produce output that conforms exactly to the structured schema requested by the system (tool/typed output).
          If the system supports structured output, use it directly.
