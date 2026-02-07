@@ -66,6 +66,7 @@ README_GRADIO.md
 start-dev.ps1
 *.ps1
 *.sh
+!start_backend.sh
 
 # Streamlit (if exists)
 .streamlit/
