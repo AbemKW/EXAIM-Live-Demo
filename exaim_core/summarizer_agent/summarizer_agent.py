@@ -8,7 +8,7 @@ import logging
 from infra import get_llm, LLMRole
 from exaim_core.utils.prompts import get_summarizer_system_prompt, get_summarizer_user_prompt
 from exaim_core.schema.agent_segment import AgentSegment
-from exaim_core.utils.json_utils import extract_json_from_text
+from exaim_core.utils.json_utils import extract_json_from_text, extract_json_with_cot_fallback
 
 class SummarizerAgent:
     def __init__(self):
@@ -54,28 +54,18 @@ class SummarizerAgent:
                 else:
                     content = str(response)
                 
-                # Use regex to extract JSON block (handles XML tags and noise)
-                match = re.search(r"\{[\s\S]*\}", content)
-                if match:
-                    json_str = match.group(0)
+                # Use robust extractor that strips CoT traces and code fences
+                json_data = extract_json_with_cot_fallback(content)
+                if json_data:
                     try:
-                        json_data = json.loads(json_str)
                         return AgentSummary(**json_data)
-                    except (json.JSONDecodeError, ValidationError) as e:
-                        # Log raw output before failing
-                        logger = logging.getLogger(__name__)
-                        logger.error(f"Failed to parse extracted JSON: {e}")
-                        logger.error(f"Raw output (first 1000 chars): {content[:1000]}")
+                    except ValidationError:
+                        # Re-raise to allow higher-level retry logic
                         raise
                 else:
-                    # Fallback to existing extraction logic
-                    json_data = extract_json_from_text(content)
-                    if json_data:
-                        return AgentSummary(**json_data)
-                    else:
-                        logger = logging.getLogger(__name__)
-                        logger.error(f"Could not extract JSON from response (first 1000 chars): {content[:1000]}")
-                        raise ValueError(f"Could not extract valid JSON from response: {content[:500]}")
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Could not extract JSON from response (first 1000 chars): {content[:1000]}")
+                    raise ValueError(f"Could not extract valid JSON from response: {content[:500]}")
             except ValidationError:
                 # Re-raise ValidationError as-is so retry logic can handle it
                 raise
@@ -272,47 +262,17 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
                 "new_buffer": new_buffer,
                 "history_k": history_k
             })
-            
-            # Extract JSON from raw response
+
+            # Extract JSON from raw response using robust extractor
             content = raw_response.content if hasattr(raw_response, 'content') else str(raw_response)
-            
             logger = logging.getLogger(__name__)
-            logger.info(f"Summarizer Raw Content Preview: {content[:1000]}") # Debug log
-            
-            # Try to parse JSON from response
-            start_idx = content.find('{')
-            if start_idx != -1:
-                # Find matching closing brace
-                brace_count = 0
-                in_string = False
-                escape_next = False
-                
-                for i in range(start_idx, len(content)):
-                    char = content[i]
-                    
-                    if escape_next:
-                        escape_next = False
-                        continue
-                    
-                    if char == '\\':
-                        escape_next = True
-                        continue
-                    
-                    if char == '"' and not escape_next:
-                        in_string = not in_string
-                        continue
-                    
-                    if not in_string:
-                        if char == '{':
-                            brace_count += 1
-                        elif char == '}':
-                            brace_count -= 1
-                            if brace_count == 0:
-                                json_str = content[start_idx:i+1]
-                                return json.loads(json_str)
+            logger.info(f"Summarizer Raw Content Preview: {content[:1000]}")
+
+            json_data = extract_json_with_cot_fallback(content)
+            return json_data
         except Exception:
             pass
-        
+
         return None
     
     @staticmethod

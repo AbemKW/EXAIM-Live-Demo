@@ -10,7 +10,7 @@ from exaim_core.utils.prompts import (
     get_buffer_agent_system_prompt_no_novelty,
     get_buffer_agent_user_prompt
 )
-from exaim_core.utils.json_utils import extract_json_from_text
+from exaim_core.utils.json_utils import extract_json_from_text, extract_json_with_cot_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +117,8 @@ class BufferAgent:
                 logger.debug(f"Raw LLM response type: {type(response)}")
                 logger.debug(f"Content (first 500 chars): {content[:500]}")
                 
-                # Try to extract JSON
-                json_data = extract_json_from_text(content)
+                # Try to extract JSON (strip CoT traces first)
+                json_data = extract_json_with_cot_fallback(content)
                 if json_data:
                     try:
                         return self.schema_class(**json_data)
