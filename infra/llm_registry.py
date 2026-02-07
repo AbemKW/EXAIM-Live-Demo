@@ -20,9 +20,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 try:
-    from langchain_community.llms import VLLM
+    from vllm import LLM as VLLM
+    from vllm import SamplingParams
 except Exception:
     VLLM = None
+    SamplingParams = None
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -249,38 +251,37 @@ class VLLMChatModel(BaseChatModel):
         temperature = None if (self.temperature is None or self.temperature < 1e-5) else float(self.temperature)
 
         try:
-            # Prepare generation kwargs - only include temperature if it's not None
-            gen_kwargs = {"max_tokens": max_new_tokens}
-            if temperature is not None:
-                gen_kwargs["temperature"] = temperature
+            # Build SamplingParams for native vLLM API
+            sampling_params = SamplingParams(
+                max_tokens=max_new_tokens,
+                temperature=0.0 if temperature is None else temperature,
+                top_p=1.0,
+                skip_special_tokens=True,  # Prevent <unused> tokens in output
+            )
             
-            # For buffer agent, add skip_special_tokens to prevent <unused> tokens
+            # Add stop sequences to prevent CoT reasoning for buffer agent
             if self.role == "buffer_agent":
-                gen_kwargs["skip_special_tokens"] = True
-                # Also set a stop sequence to prevent CoT reasoning
-                gen_kwargs["stop"] = ["<unused", "\n\nAlternatively", "\n\nLet me", "Let me think"]
-                logger.info(f"Buffer agent: using skip_special_tokens=True and stop sequences")
+                sampling_params.stop = ["<unused", "\n\nAlternatively", "\n\nLet me", "Let me think"]
+                logger.info(f"Buffer agent: using stop sequences to prevent CoT")
             
-            # Use guided JSON if schema is provided (for buffer agent)
+            # CRITICAL: Use guided_json for buffer agent with native vLLM API
             if self.guided_json_schema is not None:
-                gen_kwargs["guided_json"] = self.guided_json_schema
-                logger.info(f"Using guided JSON generation for {self.role}")
+                sampling_params.guided_decoding_backend = "outlines"
+                sampling_params.guided_json = self.guided_json_schema
+                logger.info(f"Using guided JSON generation (outlines backend) for {self.role}")
             
-            # Prefer `invoke`, then `generate`, then callable
-            if hasattr(self.vllm_engine, "invoke"):
-                result = self.vllm_engine.invoke(prompt, **gen_kwargs)
-            elif hasattr(self.vllm_engine, "generate"):
-                result = self.vllm_engine.generate(prompt, **gen_kwargs)
+            # Use native vLLM generate() method with proper SamplingParams
+            outputs = self.vllm_engine.generate([prompt], sampling_params)
+            
+            # Extract text from vLLM RequestOutput
+            if outputs and len(outputs) > 0:
+                output = outputs[0]
+                if hasattr(output, 'outputs') and len(output.outputs) > 0:
+                    text_output = output.outputs[0].text
+                else:
+                    text_output = str(output)
             else:
-                result = self.vllm_engine(prompt, **gen_kwargs)
-
-            text_output = ""
-            if isinstance(result, dict) and "text" in result:
-                text_output = result.get("text", "")
-            elif isinstance(result, str):
-                text_output = result
-            else:
-                text_output = str(getattr(result, "text", result))
+                text_output = ""
 
             if not text_output or text_output.strip() == "":
                 logger.error(f"vLLM returned empty output for {self.role}")
@@ -385,8 +386,10 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                         tensor_parallel_size=tp_size,
                         trust_remote_code=True,
                         gpu_memory_utilization=gpu_mem_util,
-                        max_seq_len=max_seq_len,
-                        vllm_kwargs=vllm_kwargs,
+                        max_model_len=max_seq_len,
+                        dtype="bfloat16",
+                        enforce_eager=False,  # Use CUDA graphs for faster inference
+                        **vllm_kwargs,
                     )
                     _VLLM_ENGINE_CACHE[model_name] = vllm
                 except Exception as e:
