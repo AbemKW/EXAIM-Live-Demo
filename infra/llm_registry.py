@@ -355,7 +355,6 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                         tensor_parallel_size=tp_size,
                         trust_remote_code=True,
                         gpu_memory_utilization=0.90,
-                        dtype="bfloat16",
                         vllm_kwargs=vllm_kwargs,
                     )
                     _VLLM_ENGINE_CACHE[model_name] = vllm
@@ -392,9 +391,6 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
             }
-            # prefer bfloat16 for MedGemma if available
-            if "medgemma" in model_name.lower():
-                model_kwargs["torch_dtype"] = torch.bfloat16
 
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model_obj = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
