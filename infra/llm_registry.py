@@ -407,9 +407,11 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             model_kwargs = {
                 "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
+                "torch_dtype": torch.bfloat16,
+                "device_map": "auto",
             }
 
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             model_obj = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
 
             if tokenizer.pad_token_id is None:
