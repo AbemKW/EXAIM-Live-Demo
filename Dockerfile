@@ -49,8 +49,7 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir uvicorn[standard] fastapi websockets \
-    && pip install --no-cache-dir bitsandbytes>=0.46.1
+    && pip install --no-cache-dir uvicorn[standard] fastapi websockets
 
 # Copy application code (EXAIM core logic and models)
 COPY exaim_core ./exaim_core
@@ -72,6 +71,10 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy startup script for backend (waits for vLLM to be ready)
+COPY start_backend.sh /app/start_backend.sh
+RUN chmod +x /app/start_backend.sh
+
 # Create writable directories for non-root user
 RUN mkdir -p /tmp/nginx /var/lib/nginx /var/log/nginx \
     && chmod -R 777 /tmp /var/lib/nginx /var/log/nginx
@@ -90,6 +93,7 @@ ENV TRANSFORMERS_CACHE=/tmp/huggingface/transformers
 ENV TORCH_HOME=/tmp/torch
 ENV USER=appuser
 ENV LOGNAME=appuser
+ENV OPENAI_BASE_URL=http://localhost:8001/v1
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
