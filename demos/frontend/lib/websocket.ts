@@ -52,15 +52,8 @@ class WebSocketService {
   private validationError: string | null = null;
 
   constructor() {
-    // Attempt to validate URL on construction for early feedback
-    // But don't throw - store the error for connect() to handle
-    // Auto-detects URL from window.location in production, or uses NEXT_PUBLIC_WS_URL if set
-    try {
-      this.wsUrl = validateWebSocketUrl(process.env.NEXT_PUBLIC_WS_URL);
-    } catch (error) {
-      this.validationError = error instanceof Error ? error.message : String(error);
-      console.error('WebSocket URL validation failed:', this.validationError);
-    }
+    // Delay URL resolution until connect() is called (client-side only)
+    // This ensures window.location is available for auto-detection
   }
 
   /**
@@ -70,10 +63,20 @@ class WebSocketService {
   connect(): void {
     const store = useCDSSStore.getState();
     
-    // Check for validation errors from constructor
+    // Resolve WebSocket URL on first connect (client-side)
+    if (!this.wsUrl) {
+      try {
+        this.wsUrl = validateWebSocketUrl(process.env.NEXT_PUBLIC_WS_URL);
+      } catch (error) {
+        this.validationError = error instanceof Error ? error.message : String(error);
+        console.error('WebSocket URL validation failed:', this.validationError);
+      }
+    }
+    
+    // Check for validation errors
     if (this.validationError || !this.wsUrl) {
       console.error('Cannot connect: WebSocket URL is invalid or not configured');
-      console.error(this.validationError || 'NEXT_PUBLIC_WS_URL environment variable is not set');
+      console.error(this.validationError || 'WebSocket URL could not be determined');
       store.setWsStatus('error');
       return;
     }
