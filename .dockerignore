@@ -67,6 +67,7 @@ start-dev.ps1
 *.ps1
 *.sh
 !start_backend.sh
+!wait-for-all-services.sh
 
 # Streamlit (if exists)
 .streamlit/
