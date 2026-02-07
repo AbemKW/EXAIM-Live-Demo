@@ -15,7 +15,7 @@ mas:
 # Purpose: Generate structured clinical summaries from agent traces
 summarizer:
   provider: vllm
-  model: unsloth/medgemma-1.5-4b-it-unsloth-bnb-4bit
+  model: google/txgemma-9b-chat
   streaming: true
   # Env overrides: SUMMARIZER_LLM_PROVIDER, SUMMARIZER_LLM_MODEL
 
