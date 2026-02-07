@@ -30,5 +30,6 @@ function ConsoleLogEntry({ agentName, content, agentColor, isActive = false }: C
   );
 }
 
-export default React.memo(ConsoleLogEntry);
+// Don't memoize - allow re-renders on every token for smooth streaming display
+export default ConsoleLogEntry;
 

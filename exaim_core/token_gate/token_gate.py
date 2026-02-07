@@ -102,8 +102,8 @@ class TokenGate:
         self,
         min_words: int = 60,
         max_words: int = 100,
-        silence_timer: float = 1,
-        max_wait_timeout: float = 4,
+        silence_timer: float = 4,
+        max_wait_timeout: float = 12,
         clock: Optional[Clock] = None
     ):
         """Initialize TokenGate with configurable flush triggers.

@@ -151,17 +151,8 @@ export default function AgentTracesPanel() {
     const observer = new MutationObserver(() => {
       // Only scroll if auto-scroll is enabled
       if (shouldAutoScrollRef.current) {
-        // Clear any pending scrolls
-        if (rafId) cancelAnimationFrame(rafId);
-        if (timeoutId) clearTimeout(timeoutId);
-        
-        // Use double RAF to ensure DOM has updated
-        rafId = requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            scrollToBottom();
-            rafId = null;
-          });
-        });
+        // Scroll immediately on every mutation for smooth token-by-token display
+        scrollToBottom();
       }
     });
 
