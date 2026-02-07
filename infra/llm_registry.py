@@ -349,12 +349,24 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                 if "bnb-4bit" not in model_name.lower() and "awq" not in model_name.lower():
                     vllm_kwargs["quantization"] = "bitsandbytes"
 
+                # Simple, minimal env overrides with safe defaults
+                try:
+                    gpu_mem_util = float(os.getenv("VLLM_GPU_MEMORY_UTILIZATION", "0.8"))
+                except Exception:
+                    gpu_mem_util = 0.8
+
+                try:
+                    max_seq_len = int(os.getenv("VLLM_MAX_SEQ_LEN", "16384"))
+                except Exception:
+                    max_seq_len = 16384
+
                 try:
                     vllm = VLLM(
                         model=model_name,
                         tensor_parallel_size=tp_size,
                         trust_remote_code=True,
-                        gpu_memory_utilization=0.90,
+                        gpu_memory_utilization=gpu_mem_util,
+                        max_seq_len=max_seq_len,
                         vllm_kwargs=vllm_kwargs,
                     )
                     _VLLM_ENGINE_CACHE[model_name] = vllm
