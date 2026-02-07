@@ -96,6 +96,7 @@ class EXAIM:
         logger = logging.getLogger(__name__)
         
         try:
+            print(f"\033[1;36m[EXAIM Background] Starting background summarization task\033[0m")
             logger.info("[EXAIM Background] Starting background summarization task")
             summary = await asyncio.wait_for(
                 self.summarizer_agent.summarize(
@@ -118,13 +119,17 @@ class EXAIM:
                     except Exception as e:
                         logger.error(f"Error in summary callback: {e}")
                         
+                print(f"\033[1;36m[EXAIM Background] Summary completed successfully\033[0m")
                 logger.info("[EXAIM Background] Summary completed successfully")
             else:
+                print(f"\033[1;33m[EXAIM Background] Summarizer returned None\033[0m")
                 logger.warning("[EXAIM Background] Summarizer returned None")
                 
         except asyncio.TimeoutError:
+            print(f"\033[1;31m[EXAIM Background] Summarizer timed out after 120s\033[0m")
             logger.error("[EXAIM Background] Summarizer timed out after 120s")
         except Exception as e:
+            print(f"\033[1;31m[EXAIM Background] Summarizer failed: {e}\033[0m")
             logger.error(f"[EXAIM Background] Summarizer failed: {e}", exc_info=True)
 
     def _get_limited_history(self, summaries: list[AgentSummary]) -> list[str]:
@@ -188,10 +193,15 @@ class EXAIM:
         # Pass token through TokenGate
         chunk = await self.token_gate.add_token(agent_id, token)
 
+        # DEBUG: Log chunk status
+        if chunk:
+            print(f"\033[1;32m[EXAIM DEBUG] TokenGate flushed chunk for {agent_id}, length={len(chunk)}\033[0m")
+        
         # Process chunk if complete
         if chunk:
             summaries = self.get_all_summaries()
             flush_reason = self.token_gate.get_last_flush_reason(agent_id)
+            print(f"\033[1;32m[EXAIM DEBUG] Calling _process_chunk for {agent_id}, flush_reason={flush_reason}\033[0m")
             return await self._process_chunk(agent_id, chunk, summaries, flush_reason)
 
         # Check TokenGate timers
@@ -199,6 +209,7 @@ class EXAIM:
         if timer_chunk:
             summaries = self.get_all_summaries()
             flush_reason = self.token_gate.get_last_flush_reason(agent_id)
+            print(f"\033[1;32m[EXAIM DEBUG] Calling _process_chunk (timer) for {agent_id}, flush_reason={flush_reason}\033[0m")
             return await self._process_chunk(agent_id, timer_chunk, summaries, flush_reason)
 
         return None
@@ -214,6 +225,7 @@ class EXAIM:
         import logging
         logger = logging.getLogger(__name__)
         
+        print(f"\033[1;35m[EXAIM _process_chunk] Processing chunk for {agent_id}, flush_reason={flush_reason}, chunk_length={len(chunk)}\033[0m")
         logger.info(f"[EXAIM] Processing chunk for {agent_id}, flush_reason={flush_reason}, chunk_length={len(chunk)}")
         
         previous_summaries = self._get_limited_history(summaries)
@@ -226,14 +238,17 @@ class EXAIM:
                 flush_reason=flush_reason,
                 history_k=self.history_k
             )
+            print(f"\033[1;35m[EXAIM _process_chunk] Buffer agent returned trigger={trigger} for {agent_id}\033[0m")
             logger.info(f"[EXAIM] Buffer agent returned trigger={trigger} for {agent_id}")
         except Exception as e:
+            print(f"\033[1;31m[EXAIM _process_chunk] Buffer agent failed for {agent_id}: {e}\033[0m")
             logger.error(f"[EXAIM] Buffer agent failed for {agent_id}: {e}", exc_info=True)
             return None
             
         if trigger:
             # Flush returns deferred tail + current buffer content.
             agent_segments = self.buffer_agent.flush()
+            print(f"\033[1;35m[EXAIM _process_chunk] Trigger activated, flushed {len(agent_segments)} segments, starting background summarizer...\033[0m")
             logger.info(f"[EXAIM] Trigger activated, flushed {len(agent_segments)} segments, starting background summarizer...")
             
             summary_history_strs = self._get_limited_history(summaries[:-1])
@@ -246,6 +261,7 @@ class EXAIM:
                 latest_summary_str
             ))
             
+            print(f"\033[1;35m[EXAIM _process_chunk] Background summarization task started, returning immediately\033[0m")
             logger.info("[EXAIM] Background summarization task started, returning immediately")
             # Return immediately without waiting for summary
             return None
