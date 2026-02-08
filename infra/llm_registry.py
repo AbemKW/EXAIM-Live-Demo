@@ -54,14 +54,23 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             except Exception as e:
                 logger.warning(f"Could not generate guided JSON schema for buffer agent: {e}")
         
-        # Summarizer generation parameters
-        # Note: Character limit enforcement relies on retry logic + fallback truncation,
-        # not on the model's ability to count. These params reduce verbosity.
+        # Summarizer generation parameters + guided JSON for character limit enforcement
+        # Guided JSON uses vLLM's constrained decoding to enforce schema at token level
         if role == LLMRole.SUMMARIZER:
-            # vLLM-specific parameter goes in extra_body
-            extra_body = model_kwargs.get("extra_body", {})
-            extra_body["repetition_penalty"] = 1.15
-            model_kwargs["extra_body"] = extra_body
+            try:
+                from exaim_core.schema.agent_summary import AgentSummary
+                guided_json_schema = AgentSummary.model_json_schema()
+                model_kwargs["extra_body"] = {
+                    "guided_json": guided_json_schema,
+                    "repetition_penalty": 1.15
+                }
+                logger.info(f"Using guided JSON for summarizer with character limits enforced")
+            except Exception as e:
+                logger.warning(f"Could not generate guided JSON schema for summarizer: {e}")
+                # Fallback to repetition penalty only
+                extra_body = model_kwargs.get("extra_body", {})
+                extra_body["repetition_penalty"] = 1.15
+                model_kwargs["extra_body"] = extra_body
             
             return ChatOpenAI(
                 model=model_name,
