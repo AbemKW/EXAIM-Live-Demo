@@ -414,7 +414,7 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
                         rewrite_chain = rewrite_prompt | self.llm
                         response = await rewrite_chain.ainvoke({})
                         summary = self._parse_llm_output(response)
-                        return summary
+                        return self._validate_and_truncate(summary)
                     
                     except Exception as retry_error:
                         # Attempt 3: Fallback truncation

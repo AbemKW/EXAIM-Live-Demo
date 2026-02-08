@@ -429,14 +429,20 @@ def trace_callback(agent_id: str, token: str):
 
 def _summary_to_dict(summary) -> dict:
     """Convert a summary Pydantic model to a dict for serialization."""
-    return {
-        "status_action": summary.status_action,
-        "key_findings": summary.key_findings,
-        "differential_rationale": summary.differential_rationale,
-        "uncertainty_confidence": summary.uncertainty_confidence,
-        "recommendation_next_step": summary.recommendation_next_step,
-        "agent_contributions": summary.agent_contributions
-    }
+    try:
+        return {
+            "status_action": summary.status_action,
+            "key_findings": summary.key_findings,
+            "differential_rationale": summary.differential_rationale,
+            "uncertainty_confidence": summary.uncertainty_confidence,
+            "recommendation_next_step": summary.recommendation_next_step,
+            "agent_contributions": summary.agent_contributions
+        }
+    except Exception as e:
+        logger.error(f"Error converting summary to dict: {e}")
+        logger.error(f"Summary type: {type(summary)}")
+        logger.error(f"Summary value: {summary}")
+        raise
 
 
 def summary_callback(summary):
@@ -447,6 +453,12 @@ def summary_callback(summary):
     Args:
         summary: AgentSummary Pydantic object
     """
+    # Defensive check: ensure summary is not a coroutine
+    import inspect
+    if inspect.iscoroutine(summary):
+        logger.error(f"summary_callback received a coroutine instead of AgentSummary object: {summary}")
+        return
+    
     try:
         # Try to get the running event loop - will succeed if called from async context
         asyncio.get_running_loop()

@@ -44,33 +44,18 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         # Model-specific kwargs for vLLM extra_body parameters
         model_kwargs = {}
         
-        # Guided JSON for buffer agent (vLLM-specific)
-        if role == LLMRole.BUFFER_AGENT:
-            try:
-                from exaim_core.schema.buffer_analysis import BufferAnalysis
-                guided_json_schema = BufferAnalysis.model_json_schema()
-                model_kwargs["extra_body"] = {"guided_json": guided_json_schema}
-                logger.info(f"Using guided JSON for buffer agent with schema: {list(guided_json_schema.get('properties', {}).keys())}")
-            except Exception as e:
-                logger.warning(f"Could not generate guided JSON schema for buffer agent: {e}")
+        # Note: guided_json removed because vLLM ignores it with compressed-tensors quantization
+        # Buffer agent and summarizer use robust JSON extraction as fallback
         
-        # Summarizer generation parameters + guided JSON for character limit enforcement
-        # Guided JSON uses vLLM's constrained decoding to enforce schema at token level
+        # Summarizer generation parameters
+        # Note: guided_json is not used because vLLM ignores it with compressed-tensors quantization
+        # Fallback JSON parsing in SummarizerAgent handles extraction robustly
         if role == LLMRole.SUMMARIZER:
-            try:
-                from exaim_core.schema.agent_summary import AgentSummary
-                guided_json_schema = AgentSummary.model_json_schema()
-                model_kwargs["extra_body"] = {
-                    "guided_json": guided_json_schema,
-                    "repetition_penalty": 1.15
-                }
-                logger.info(f"Using guided JSON for summarizer with character limits enforced")
-            except Exception as e:
-                logger.warning(f"Could not generate guided JSON schema for summarizer: {e}")
-                # Fallback to repetition penalty only
-                extra_body = model_kwargs.get("extra_body", {})
-                extra_body["repetition_penalty"] = 1.15
-                model_kwargs["extra_body"] = extra_body
+            # Use repetition penalty to improve output quality
+            model_kwargs["extra_body"] = {
+                "repetition_penalty": 1.15
+            }
+            logger.info(f"Configured summarizer with repetition_penalty (guided_json disabled for vLLM compatibility)")
             
             return ChatOpenAI(
                 model=model_name,
