@@ -51,23 +51,84 @@ def get_summarizer_system_prompt() -> str:
             </inputs>
 
             <hard_limits mandatory="true">
-            ⚠️ ABSOLUTE CHARACTER LIMITS - COUNT EVERY CHARACTER INCLUDING SPACES ⚠️
-            These limits are HARD CONSTRAINTS that you MUST NOT exceed:
+            ═══════════════════════════════════════════════════════════════════════════════
+            ⚠️  ABSOLUTE CHARACTER LIMITS - EVERY CHARACTER INCLUDING SPACES COUNTS  ⚠️
+            ═══════════════════════════════════════════════════════════════════════════════
             
-            - status_action: MAXIMUM 150 characters (count: 0...150)
-            - key_findings: MAXIMUM 180 characters (count: 0...180)
-            - differential_rationale: MAXIMUM 210 characters (count: 0...210)
-            - uncertainty_confidence: MAXIMUM 120 characters (count: 0...120)
-            - recommendation_next_step: MAXIMUM 180 characters (count: 0...180)
-            - agent_contributions: MAXIMUM 150 characters (count: 0...150)
-
-            CRITICAL VERIFICATION BEFORE OUTPUT:
-            1. As you write each field, COUNT characters as you go
-            2. If approaching the limit, STOP and use abbreviations (e.g., "Dx" for diagnosis, "Tx" for treatment, "Pt" for patient)
-            3. If you exceed a limit, IMMEDIATELY delete words until under the cap
-            4. NEVER submit output with any field exceeding its character limit
+            LIMITS (MAXIMUM characters per field):
+            • status_action: 150
+            • key_findings: 180
+            • differential_rationale: 210
+            • uncertainty_confidence: 120
+            • recommendation_next_step: 180
+            • agent_contributions: 150
             
-            FAILING TO COMPLY WILL RESULT IN REJECTION AND RETRY.
+            ═══════════════════════════════════════════════════════════════════════════════
+            FEW-SHOT EXAMPLES (study these carefully - they show EXACTLY how to format)
+            ═══════════════════════════════════════════════════════════════════════════════
+            
+            EXAMPLE 1 - Cardiac Case:
+            {
+              "status_action": "Cardiology evaluating AFib w/ RVR & ST changes. DDx: ADHF vs ACS.",
+              "key_findings": "ECG: AFib ~110 bpm, ST depression V4-V6, TWI. Trop 2.8 (crit), K+ 3.2 (low), BNP 850 (high). Dyspneic, diaphoretic.",
+              "differential_rationale": "ADHF 2° AFib w/ RVR exacerbating HFrEF most likely. ACS possible given ECG changes & elevated trop, though may be demand ischemia.",
+              "uncertainty_confidence": "High confidence ADHF. Moderate uncertainty re: ACS vs demand.",
+              "recommendation_next_step": "Serial trop q3h. Rate control (diltiazem). Correct K+. Echo to assess EF. Consider CTPA if PE suspicion persists.",
+              "agent_contributions": "Cardiology: AFib/hypoxia flagged; Radiology: CXR/echo/CTPA recs; Lab: K+ correction urgent"
+            }
+            
+            EXAMPLE 2 - Neuro Case:
+            {
+              "status_action": "Neurology evaluating progressive ataxia. Genetic testing ordered.",
+              "key_findings": "MRI: cerebellar atrophy. Gait ataxia, dysmetria, nystagmus. Onset age 45. FHx: father w/ similar sx.",
+              "differential_rationale": "SCA (spinocerebellar ataxia) most likely given FHx, adult onset, progressive cerebellar signs. MSA, FRDA less likely.",
+              "uncertainty_confidence": "Moderate confidence pending genetic testing.",
+              "recommendation_next_step": "SCA genetic panel (SCA1-7, 17). Neurology f/u in 2 wks. PT/OT referral for balance training.",
+              "agent_contributions": "Neurology: SCA suspected, genetic testing ordered; Radiology: MRI confirmed cerebellar atrophy"
+            }
+            
+            ═══════════════════════════════════════════════════════════════════════════════
+            MANDATORY ABBREVIATIONS (use these to save characters):
+            ═══════════════════════════════════════════════════════════════════════════════
+            
+            Clinical:
+            • Dx = diagnosis, DDx = differential diagnosis, Tx = treatment
+            • Pt = patient, Hx = history, FHx = family history, PMHx = past medical history
+            • sx = symptoms, PE = physical exam, VS = vital signs
+            • w/ = with, w/o = without, 2° = secondary to, 1° = primary
+            
+            Conditions:
+            • AFib = atrial fibrillation, RVR = rapid ventricular response
+            • ACS = acute coronary syndrome, ADHF = acute decompensated heart failure
+            • HFrEF = heart failure with reduced ejection fraction
+            • PE = pulmonary embolism, CTPA = CT pulmonary angiography
+            • SCA = spinocerebellar ataxia, MSA = multiple system atrophy
+            
+            Labs/Tests:
+            • Trop = troponin, K+ = potassium, BNP = brain natriuretic peptide
+            • ECG = electrocardiogram, Echo = echocardiogram, CXR = chest X-ray
+            • q3h = every 3 hours, f/u = follow-up
+            
+            Symbols:
+            • & = and, + = plus, ~ = approximately, → = leads to/results in
+            
+            ═══════════════════════════════════════════════════════════════════════════════
+            CHARACTER COUNTING TECHNIQUE:
+            ═══════════════════════════════════════════════════════════════════════════════
+            
+            As you write EACH field:
+            1. Use abbreviations from the start
+            2. Track approximate length: ~10 words ≈ 60-80 chars
+            3. If approaching limit (e.g., >140 for 150 limit), STOP IMMEDIATELY
+            4. Remove filler words: "the", "a", "currently", "in order to"
+            5. Use commas instead of "and" when listing: "Dx, Tx, f/u" not "diagnosis and treatment and follow-up"
+            
+            VALIDATION BEFORE SUBMITTING:
+            Count characters in your final output. If ANY field exceeds its limit:
+            → DELETE words from that field until under limit
+            → Prioritize keeping clinical facts over descriptive language
+            
+            ═══════════════════════════════════════════════════════════════════════════════
             </hard_limits>
 
             <grounding_rules>

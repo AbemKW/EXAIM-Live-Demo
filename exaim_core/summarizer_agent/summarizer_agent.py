@@ -31,7 +31,7 @@ class SummarizerAgent:
             ("user", get_summarizer_user_prompt()),
         ])
         
-        # Field limits for rewrite prompts
+        # Field limits for rewrite prompts and validation (match schema exactly)
         self.field_limits = {
             'status_action': 150,
             'key_findings': 180,
@@ -42,6 +42,35 @@ class SummarizerAgent:
         }
     
 
+
+    def _validate_and_truncate(self, summary: AgentSummary) -> AgentSummary:
+        """Proactively validate and truncate summary fields to ensure limits.
+        
+        Since 4b models cannot reliably count characters, we ALWAYS validate
+        and truncate as needed before returning any summary.
+        
+        Args:
+            summary: AgentSummary that may exceed limits
+            
+        Returns:
+            AgentSummary with fields guaranteed to be within limits
+        """
+        logger = logging.getLogger(__name__)
+        needs_truncation = False
+        output_dict = {}
+        
+        for field, max_len in self.field_limits.items():
+            value = getattr(summary, field, '')
+            if len(str(value)) > max_len:
+                needs_truncation = True
+                logger.warning(f"Field '{field}' exceeds limit: {len(str(value))} > {max_len}. Truncating.")
+                output_dict[field] = self._truncate_field(str(value), max_len)
+            else:
+                output_dict[field] = value
+        
+        if needs_truncation:
+            return AgentSummary(**output_dict)
+        return summary
 
     def _parse_llm_output(self, response) -> AgentSummary:
         """Parse LLM output into AgentSummary, handling both structured and text outputs."""
@@ -342,7 +371,11 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
                 "history_k": history_k
             })
             summary = self._parse_llm_output(response)
-            return summary
+            
+            # CRITICAL: Always validate and truncate before returning
+            # 4b models cannot reliably count characters, so we enforce limits here
+            return self._validate_and_truncate(summary)
+            
         except Exception as e:
             # Extract ValidationError from LangChain exception wrapper
             validation_error, previous_output = self._extract_validation_error_from_exception(e)
