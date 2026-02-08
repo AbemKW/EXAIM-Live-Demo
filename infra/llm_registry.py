@@ -82,9 +82,12 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         )
     
     if provider == "google":
+        # Use temperature override for deterministic behavior
+        actual_temp = temperature if temperature is not None else (0.0 if role in [LLMRole.SUMMARIZER, LLMRole.BUFFER_AGENT] else 0.7)
         return ChatGoogleGenerativeAI(
             model=model or "gemini-2.5-flash-lite",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
+            temperature=actual_temp,
         )
     
     if provider == "groq":
