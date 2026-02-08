@@ -51,15 +51,23 @@ def get_summarizer_system_prompt() -> str:
             </inputs>
 
             <hard_limits mandatory="true">
-            These are absolute per-field caps (count every character including spaces):
-            - status_action: ≤ 150
-            - key_findings: ≤ 180
-            - differential_rationale: ≤ 210
-            - uncertainty_confidence: ≤ 120
-            - recommendation_next_step: ≤ 180
-            - agent_contributions: ≤ 150
+            ⚠️ ABSOLUTE CHARACTER LIMITS - COUNT EVERY CHARACTER INCLUDING SPACES ⚠️
+            These limits are HARD CONSTRAINTS that you MUST NOT exceed:
+            
+            - status_action: MAXIMUM 150 characters (count: 0...150)
+            - key_findings: MAXIMUM 180 characters (count: 0...180)
+            - differential_rationale: MAXIMUM 210 characters (count: 0...210)
+            - uncertainty_confidence: MAXIMUM 120 characters (count: 0...120)
+            - recommendation_next_step: MAXIMUM 180 characters (count: 0...180)
+            - agent_contributions: MAXIMUM 150 characters (count: 0...150)
 
-            Before finalizing, you MUST verify each field length. If any exceeds its cap, shorten immediately.
+            CRITICAL VERIFICATION BEFORE OUTPUT:
+            1. As you write each field, COUNT characters as you go
+            2. If approaching the limit, STOP and use abbreviations (e.g., "Dx" for diagnosis, "Tx" for treatment, "Pt" for patient)
+            3. If you exceed a limit, IMMEDIATELY delete words until under the cap
+            4. NEVER submit output with any field exceeding its character limit
+            
+            FAILING TO COMPLY WILL RESULT IN REJECTION AND RETRY.
             </hard_limits>
 
             <grounding_rules>
@@ -146,19 +154,25 @@ def get_summarizer_system_prompt() -> str:
 
 
             <verification_checklist mandatory="true">
-            Before submitting your final output, perform this checklist and fix any violation immediately by shortening that field (use abbreviations, remove redundancy, keep clinical meaning):
+            ⚠️ FINAL VERIFICATION - MANDATORY BEFORE SUBMISSION ⚠️
+            
+            For EACH field below, COUNT the exact number of characters (including spaces):
+            
+            ✓ status_action: Count characters → Is count ≤ 150? If NO, delete words until ≤ 150
+            ✓ key_findings: Count characters → Is count ≤ 180? If NO, delete words until ≤ 180
+            ✓ differential_rationale: Count characters → Is count ≤ 210? If NO, delete words until ≤ 210
+            ✓ uncertainty_confidence: Count characters → Is count ≤ 120? If NO, delete words until ≤ 120
+            ✓ recommendation_next_step: Count characters → Is count ≤ 180? If NO, delete words until ≤ 180
+            ✓ agent_contributions: Count characters → Is count ≤ 150? If NO, delete words until ≤ 150
 
-            ✓ status_action length ≤ 150?
-            ✓ key_findings length ≤ 180?
-            ✓ differential_rationale length ≤ 210?
-            ✓ uncertainty_confidence length ≤ 120?
-            ✓ recommendation_next_step length ≤ 180?
-            ✓ agent_contributions length ≤ 150?
-
-            Rules:
-            - If ANY field exceeds its cap, shorten that field and re-check until all pass.
-            - DO NOT change numeric values, units, or negations.
-            - If you cannot fit supported content, prioritize deltas and safety-critical sticky context; omit lower-value details.
+            Shortening strategies:
+            - Use medical abbreviations: Dx (diagnosis), Tx (treatment), Pt (patient), Hx (history), PE (physical exam), DDx (differential diagnosis)
+            - Remove filler words: "the", "a", "currently", "in order to"
+            - Use symbols: "&" instead of "and", "+" for "plus", "→" for "leading to"
+            - Prioritize clinical facts over descriptive language
+            - DO NOT change numeric values, units, or negations
+            
+            If ANY field exceeds its limit, you MUST shorten it before submitting.
             </verification_checklist>
 
             </field_instructions>

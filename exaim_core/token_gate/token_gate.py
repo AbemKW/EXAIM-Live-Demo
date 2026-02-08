@@ -100,22 +100,24 @@ class TokenGate:
     
     def __init__(
         self,
-        min_words: int = 60,
-        max_words: int = 100,
-        silence_timer: float = 4,
-        max_wait_timeout: float = 12,
+        min_words: int = 100,
+        max_words: int = 150,
+        silence_timer: float = 8,
+        max_wait_timeout: float = 20,
         clock: Optional[Clock] = None
     ):
         """Initialize TokenGate with configurable flush triggers.
         
         Args:
-            min_words: Minimum word threshold (whitespace-delimited) before flushing (default: 60)
-            max_words: Maximum word cap (whitespace-delimited) to force flush (default: 100)
-            silence_timer: Seconds of inactivity before flush (default: 1)
-            max_wait_timeout: Maximum seconds before forced flush (default: 4)
+            min_words: Minimum word threshold (whitespace-delimited) before flushing (default: 100, increased from 60)
+            max_words: Maximum word cap (whitespace-delimited) to force flush (default: 150, increased from 100)
+            silence_timer: Seconds of inactivity before flush (default: 8, increased from 4)
+            max_wait_timeout: Maximum seconds before forced flush (default: 20, increased from 12)
             clock: Optional clock/time provider for deterministic timing. If None, uses real
                 wall-clock time. Use `ManualClock` for trace replay calibration.
         
+        Note: Defaults increased to reduce summary generation frequency and allow more
+        context to accumulate before triggering summarization.
         
         Boundary cues are hardcoded to `.?!\n` (period, question mark, exclamation, newline)
         and cannot be configured.

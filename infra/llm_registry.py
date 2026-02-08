@@ -38,8 +38,13 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
 
     # OpenAI provider now handles vLLM via OpenAI-compatible API
     if provider == "openai":
-        # Check if we need guided JSON for buffer agent
+        base_url = os.getenv("OPENAI_BASE_URL", None)
+        api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
+        
+        # Model-specific kwargs for vLLM extra_body parameters
         model_kwargs = {}
+        
+        # Guided JSON for buffer agent (vLLM-specific)
         if role == LLMRole.BUFFER_AGENT:
             try:
                 from exaim_core.schema.buffer_analysis import BufferAnalysis
@@ -49,10 +54,24 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             except Exception as e:
                 logger.warning(f"Could not generate guided JSON schema for buffer agent: {e}")
         
-        # For vLLM server (internal), use localhost:8001 with empty API key
-        # For external OpenAI API, use standard configuration
-        base_url = os.getenv("OPENAI_BASE_URL", None)
-        api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
+        # Summarizer generation parameters
+        # Note: Character limit enforcement relies on retry logic + fallback truncation,
+        # not on the model's ability to count. These params reduce verbosity.
+        if role == LLMRole.SUMMARIZER:
+            # vLLM-specific parameter goes in extra_body
+            extra_body = model_kwargs.get("extra_body", {})
+            extra_body["repetition_penalty"] = 1.15
+            model_kwargs["extra_body"] = extra_body
+            
+            return ChatOpenAI(
+                model=model_name,
+                base_url=base_url,
+                api_key=api_key,
+                temperature=0.0,  # Deterministic for consistent retry behavior
+                top_p=0.9,        # Slightly constrain sampling
+                max_tokens=800,   # Safety cap (valid responses ~250-350 tokens)
+                model_kwargs=model_kwargs,
+            )
         
         return ChatOpenAI(
             model=model_name,

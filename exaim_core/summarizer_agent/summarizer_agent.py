@@ -12,6 +12,7 @@ from exaim_core.utils.json_utils import extract_json_from_text, extract_json_wit
 
 class SummarizerAgent:
     def __init__(self):
+        # Get LLM with role-specific generation parameters configured in registry
         self.base_llm = get_llm(LLMRole.SUMMARIZER)
         try:
             self.llm = self.base_llm.with_structured_output(
