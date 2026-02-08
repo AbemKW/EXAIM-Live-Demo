@@ -68,24 +68,24 @@ def get_summarizer_system_prompt() -> str:
             ═══════════════════════════════════════════════════════════════════════════════
             
             EXAMPLE 1 - Cardiac Case:
-            {
+            {{
               "status_action": "Cardiology evaluating AFib w/ RVR & ST changes. DDx: ADHF vs ACS.",
               "key_findings": "ECG: AFib ~110 bpm, ST depression V4-V6, TWI. Trop 2.8 (crit), K+ 3.2 (low), BNP 850 (high). Dyspneic, diaphoretic.",
               "differential_rationale": "ADHF 2° AFib w/ RVR exacerbating HFrEF most likely. ACS possible given ECG changes & elevated trop, though may be demand ischemia.",
               "uncertainty_confidence": "High confidence ADHF. Moderate uncertainty re: ACS vs demand.",
               "recommendation_next_step": "Serial trop q3h. Rate control (diltiazem). Correct K+. Echo to assess EF. Consider CTPA if PE suspicion persists.",
               "agent_contributions": "Cardiology: AFib/hypoxia flagged; Radiology: CXR/echo/CTPA recs; Lab: K+ correction urgent"
-            }
+            }}
             
             EXAMPLE 2 - Neuro Case:
-            {
+            {{
               "status_action": "Neurology evaluating progressive ataxia. Genetic testing ordered.",
               "key_findings": "MRI: cerebellar atrophy. Gait ataxia, dysmetria, nystagmus. Onset age 45. FHx: father w/ similar sx.",
               "differential_rationale": "SCA (spinocerebellar ataxia) most likely given FHx, adult onset, progressive cerebellar signs. MSA, FRDA less likely.",
               "uncertainty_confidence": "Moderate confidence pending genetic testing.",
               "recommendation_next_step": "SCA genetic panel (SCA1-7, 17). Neurology f/u in 2 wks. PT/OT referral for balance training.",
               "agent_contributions": "Neurology: SCA suspected, genetic testing ordered; Radiology: MRI confirmed cerebellar atrophy"
-            }
+            }}
             
             ═══════════════════════════════════════════════════════════════════════════════
             MANDATORY ABBREVIATIONS (use these to save characters):
