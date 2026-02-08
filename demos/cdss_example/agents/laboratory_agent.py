@@ -7,6 +7,14 @@ from exaim_core.exaim import EXAIM
 
 logger = logging.getLogger(__name__)
 
+# Try to import Google GenAI error types for better error handling
+try:
+    from google.genai.errors import ServerError
+    GOOGLE_GENAI_AVAILABLE = True
+except ImportError:
+    GOOGLE_GENAI_AVAILABLE = False
+    ServerError = None
+
 
 class LaboratoryAgent(DemoBaseAgent):
     """Laboratory specialist agent for lab result interpretation and recommendations"""
@@ -83,6 +91,31 @@ class LaboratoryAgent(DemoBaseAgent):
                     yield char
             else:
                 raise
+        except TypeError as e:
+            # Handle LangChain bug when Google GenAI returns 503 error
+            # LangChain tries to subscript ClientResponse object which fails
+            if "'ClientResponse' object is not subscriptable" in str(e):
+                error_msg = (
+                    "The model service is currently overloaded (503 error). "
+                    "This is a temporary issue with the Google GenAI API. "
+                    "Please try again in a few moments."
+                )
+                logger.error(f"Google GenAI 503 error handled: {error_msg}")
+                raise RuntimeError(error_msg) from e
+            raise
+        except Exception as e:
+            # Catch Google GenAI ServerError before it reaches LangChain's buggy error handler
+            if GOOGLE_GENAI_AVAILABLE and isinstance(e, ServerError):
+                if e.status_code == 503:
+                    error_msg = (
+                        "The model service is currently overloaded (503 error). "
+                        "This is a temporary issue with the Google GenAI API. "
+                        "Please try again in a few moments."
+                    )
+                    logger.error(f"Google GenAI 503 error: {error_msg}")
+                    raise RuntimeError(error_msg) from e
+            # Re-raise other exceptions
+            raise
 
         # 3. After stream ends: flush remaining TokenGate content (parks tail content for later)
         if self.exaim:
