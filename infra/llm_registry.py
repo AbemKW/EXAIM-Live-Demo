@@ -54,7 +54,6 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                 api_key=api_key,
                 temperature=0.0,  # Deterministic for consistent retry behavior
                 top_p=0.9,        # Slightly constrain sampling
-                max_tokens=800,   # Safety cap (valid responses ~250-350 tokens)
                 model_kwargs=model_kwargs,
             )
         

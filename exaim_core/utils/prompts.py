@@ -51,20 +51,9 @@ def get_summarizer_system_prompt() -> str:
             </inputs>
 
             <hard_limits mandatory="true">
-            ═══════════════════════════════════════════════════════════════════════════════
-            ⚠️  ABSOLUTE CHARACTER LIMITS - EVERY CHARACTER INCLUDING SPACES COUNTS  ⚠️
-            ═══════════════════════════════════════════════════════════════════════════════
-            
-            LIMITS (MAXIMUM characters per field):
-            • status_action: 150
-            • key_findings: 180
-            • differential_rationale: 210
-            • uncertainty_confidence: 120
-            • recommendation_next_step: 180
-            • agent_contributions: 150
             
             ═══════════════════════════════════════════════════════════════════════════════
-            FEW-SHOT EXAMPLES (study these carefully - they show EXACTLY how to format)
+            FEW-SHOT EXAMPLES
             ═══════════════════════════════════════════════════════════════════════════════
             
             EXAMPLE 1 - Cardiac Case:
@@ -111,24 +100,7 @@ def get_summarizer_system_prompt() -> str:
             
             Symbols:
             • & = and, + = plus, ~ = approximately, → = leads to/results in
-            
-            ═══════════════════════════════════════════════════════════════════════════════
-            CHARACTER COUNTING TECHNIQUE:
-            ═══════════════════════════════════════════════════════════════════════════════
-            
-            As you write EACH field:
-            1. Use abbreviations from the start
-            2. Track approximate length: ~10 words ≈ 60-80 chars
-            3. If approaching limit (e.g., >140 for 150 limit), STOP IMMEDIATELY
-            4. Remove filler words: "the", "a", "currently", "in order to"
-            5. Use commas instead of "and" when listing: "Dx, Tx, f/u" not "diagnosis and treatment and follow-up"
-            
-            VALIDATION BEFORE SUBMITTING:
-            Count characters in your final output. If ANY field exceeds its limit:
-            → DELETE words from that field until under limit
-            → Prioritize keeping clinical facts over descriptive language
-            
-            ═══════════════════════════════════════════════════════════════════════════════
+
             </hard_limits>
 
             <grounding_rules>
@@ -179,69 +151,45 @@ def get_summarizer_system_prompt() -> str:
             <status_action>
             Purpose: orient clinician to what just happened (SBAR Situation).
             Use present tense, action-oriented phrasing about multi-agent activity ONLY if supported by new_buffer.
-            Max 150 chars.
+            Max 15–25 words.
             </status_action>
 
             <key_findings>
             Purpose: minimal objective/subjective evidence driving the current step (SOAP S/O).
             Include only key symptoms/vitals/labs/imaging that appear in new_buffer, plus allowed sticky safety context if required.
-            Max 180 chars.
+            Max 20–30 words.
             </key_findings>
 
             <differential_rationale>
             Purpose: leading hypotheses + concise rationale (SOAP Assessment).
             Prefer 1–2 leading diagnoses and the key “because” features.
-            Max 210 chars.
+            Max 25–35 words.
             </differential_rationale>
 
             <uncertainty_confidence>
             Purpose: express uncertainty/confidence ONLY if explicitly present in new_buffer; otherwise placeholder.
             Qualitative or brief numeric probabilities if provided.
-            Max 120 chars.
+            Max 10–20 words.
             </uncertainty_confidence>
 
             <recommendation_next_step>
             Purpose: actionable next step (SBAR Recommendation / SOAP Plan) ONLY if supported by new_buffer.
             Use imperative clinical phrasing; keep short.
-            Max 180 chars.
+            Max 15–30 words.
             </recommendation_next_step>
 
             <agent_contributions>
             Extract agent IDs from the newline-separated format in new_buffer.
             Include at most 2 agents (most recent or most impactful).
             Format: "agentX: <3–6 word contribution>; agentY: <3–6 word contribution>"
-            Max 150 chars.
+            Max 15–25 words.
             </agent_contributions>
-
-
-            <verification_checklist mandatory="true">
-            ⚠️ FINAL VERIFICATION - MANDATORY BEFORE SUBMISSION ⚠️
-            
-            For EACH field below, COUNT the exact number of characters (including spaces):
-            
-            ✓ status_action: Count characters → Is count ≤ 150? If NO, delete words until ≤ 150
-            ✓ key_findings: Count characters → Is count ≤ 180? If NO, delete words until ≤ 180
-            ✓ differential_rationale: Count characters → Is count ≤ 210? If NO, delete words until ≤ 210
-            ✓ uncertainty_confidence: Count characters → Is count ≤ 120? If NO, delete words until ≤ 120
-            ✓ recommendation_next_step: Count characters → Is count ≤ 180? If NO, delete words until ≤ 180
-            ✓ agent_contributions: Count characters → Is count ≤ 150? If NO, delete words until ≤ 150
-
-            Shortening strategies:
-            - Use medical abbreviations: Dx (diagnosis), Tx (treatment), Pt (patient), Hx (history), PE (physical exam), DDx (differential diagnosis)
-            - Remove filler words: "the", "a", "currently", "in order to"
-            - Use symbols: "&" instead of "and", "+" for "plus", "→" for "leading to"
-            - Prioritize clinical facts over descriptive language
-            - DO NOT change numeric values, units, or negations
-            
-            If ANY field exceeds its limit, you MUST shorten it before submitting.
-            </verification_checklist>
 
             </field_instructions>
 
             <output_format parser_strict="true">
             You MUST produce output that conforms exactly to the structured schema requested by the system (tool/typed output).
-            If the system supports structured output, use it directly.
-            If not, output ONLY a valid JSON object with the required fields. Example:
+            Output ONLY a valid JSON object with the required fields. Example:
             {{
               "status_action": "...",
               "key_findings": "...",
