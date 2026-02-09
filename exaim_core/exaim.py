@@ -8,7 +8,7 @@ from exaim_core.token_gate.token_gate import TokenGate
 from exaim_core.schema.agent_summary import AgentSummary
 
 class EXAIM:
-    def __init__(self, history_k: int = 3, backpressure_delay: float = 0.08):
+    def __init__(self, history_k: int = 3):
         self.buffer_agent = BufferAgent()
         self.summarizer_agent = SummarizerAgent()
         self.token_gate = TokenGate()
@@ -20,9 +20,6 @@ class EXAIM:
         self.background_tasks: set = set()
         # Lock for thread-safe summary list access
         self.summaries_lock = asyncio.Lock()
-        # Backpressure control: slow down MAS streaming when summarizer is busy
-        self.summarizer_busy = False
-        self.backpressure_delay = backpressure_delay  # seconds to delay per token when busy (default: 80ms)
     
     def register_trace_callback(self, callback: Callable[[str, str], None]):
         """Register a callback function to be called when trace tokens are received.
@@ -112,9 +109,6 @@ class EXAIM:
         import logging
         logger = logging.getLogger(__name__)
         
-        # Set busy flag to trigger backpressure
-        self.summarizer_busy = True
-        
         try:
             print(f"\033[1;36m[EXAIM Background] Starting background summarization task (trigger_id={trigger_id})\033[0m")
             logger.info(f"[EXAIM Background] Starting background summarization task (trigger_id={trigger_id})")
@@ -154,9 +148,6 @@ class EXAIM:
         except Exception as e:
             print(f"\033[1;31m[EXAIM Background] Summarizer failed (trigger_id={trigger_id}): {e}\033[0m")
             logger.error(f"[EXAIM Background] Summarizer failed (trigger_id={trigger_id}): {e}", exc_info=True)
-        finally:
-            # Clear busy flag when done
-            self.summarizer_busy = False
 
     def _get_limited_history(self, summaries: list[AgentSummary]) -> list[str]:
         """Get the last k summary entries."""
@@ -217,15 +208,7 @@ class EXAIM:
         return None
 
     async def on_new_token(self, agent_id: str, token: str) -> Optional[AgentSummary]:
-        """Process a single token for the given agent.
-        
-        Applies backpressure by adding a small delay when summarizer is busy,
-        preventing MAS from overwhelming the summarization pipeline.
-        """
-        # Apply backpressure: slow down token processing when summarizer is busy
-        if self.summarizer_busy:
-            await asyncio.sleep(self.backpressure_delay)
-        
+        """Process a single token for the given agent."""
         # Emit trace callbacks
         for callback in self.trace_callbacks:
             try:
