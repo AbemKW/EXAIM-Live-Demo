@@ -41,22 +41,13 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         base_url = os.getenv("OPENAI_BASE_URL", None)
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
         
-        # Model-specific kwargs for vLLM extra_body parameters
+        # Model-specific kwargs for vLLM extra_body parameters. Keep this empty by default
+        # so callers can pass per-invoke `extra_body` (e.g. guided_json) when needed.
         model_kwargs = {}
-        
-        # Note: guided_json removed because vLLM ignores it with compressed-tensors quantization
-        # Buffer agent and summarizer use robust JSON extraction as fallback
-        
-        # Summarizer generation parameters
-        # Note: guided_json is not used because vLLM ignores it with compressed-tensors quantization
-        # Fallback JSON parsing in SummarizerAgent handles extraction robustly
         if role == LLMRole.SUMMARIZER:
-            # Use repetition penalty to improve output quality
-            model_kwargs["extra_body"] = {
-                "repetition_penalty": 1.15
-            }
-            logger.info(f"Configured summarizer with repetition_penalty (guided_json disabled for vLLM compatibility)")
-            
+            # Default behavior: deterministic, constrained sampling for summarization.
+            # Per-call `extra_body` (for vLLM guided_json) is supported and should be
+            # provided by the caller/agent when applicable.
             return ChatOpenAI(
                 model=model_name,
                 base_url=base_url,

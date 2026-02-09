@@ -14,6 +14,11 @@ class SummarizerAgent:
     def __init__(self):
         # Get LLM with role-specific generation parameters configured in registry
         self.base_llm = get_llm(LLMRole.SUMMARIZER)
+        # Prepare the JSON schema for guided decoding (vLLM guided_json)
+        try:
+            self.guided_json_schema = AgentSummary.model_json_schema()
+        except Exception:
+            self.guided_json_schema = None
         try:
             self.llm = self.base_llm.with_structured_output(
                     schema=AgentSummary,
@@ -286,12 +291,22 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
         """
         try:
             raw_chain = self.summarize_prompt | self.base_llm
-            raw_response = await raw_chain.ainvoke({
+            # Ask vLLM to constrain output to the AgentSummary JSON schema when available
+            extra_body = {"guided_json": self.guided_json_schema} if self.guided_json_schema is not None else None
+            if extra_body is not None:
+                raw_response = await raw_chain.ainvoke({
                 "summary_history": ",\n".join(summary_history),
                 "latest_summary": latest_summary,
                 "new_buffer": new_buffer,
                 "history_k": history_k
-            })
+                }, extra_body=extra_body)
+            else:
+                raw_response = await raw_chain.ainvoke({
+                    "summary_history": ",\n".join(summary_history),
+                    "latest_summary": latest_summary,
+                    "new_buffer": new_buffer,
+                    "history_k": history_k
+                })
 
             # Extract JSON from raw response using robust extractor
             content = raw_response.content if hasattr(raw_response, 'content') else str(raw_response)
@@ -364,12 +379,21 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
         
         # Attempt 1: Initial structured output
         try:
-            response = await summarize_chain.ainvoke({
+            extra_body = {"guided_json": self.guided_json_schema} if self.guided_json_schema is not None else None
+            if extra_body is not None:
+                response = await summarize_chain.ainvoke({
                 "summary_history": ",\n".join(summary_history),
                 "latest_summary": latest_summary,
                 "new_buffer": new_buffer,
                 "history_k": history_k
-            })
+                }, extra_body=extra_body)
+            else:
+                response = await summarize_chain.ainvoke({
+                    "summary_history": ",\n".join(summary_history),
+                    "latest_summary": latest_summary,
+                    "new_buffer": new_buffer,
+                    "history_k": history_k
+                })
             summary = self._parse_llm_output(response)
             
             # CRITICAL: Always validate and truncate before returning
@@ -412,7 +436,11 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
                         
                         # Retry with rewrite prompt
                         rewrite_chain = rewrite_prompt | self.llm
-                        response = await rewrite_chain.ainvoke({})
+                        extra_body = {"guided_json": self.guided_json_schema} if self.guided_json_schema is not None else None
+                        if extra_body is not None:
+                            response = await rewrite_chain.ainvoke({}, extra_body=extra_body)
+                        else:
+                            response = await rewrite_chain.ainvoke({})
                         summary = self._parse_llm_output(response)
                         return self._validate_and_truncate(summary)
                     
