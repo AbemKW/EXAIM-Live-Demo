@@ -21,8 +21,15 @@ from demos.cdss_example.message_bus import message_queue
 
 # Try to import trace replay engine for trace_replay mode (optional for live demo)
 try:
-    # Add evals/src to path for trace replay engine
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "evals" / "src"))
+    # Prefer a local `trace_replay` package if present, then fall back to evals/src
+    project_root = Path(__file__).resolve().parent.parent.parent
+    # Prefer demos-local trace_replay package inside demos/backend
+    trace_replay_src = project_root / "demos" / "backend" / "trace_replay" / "src"
+    evals_src = project_root / "evals" / "src"
+    if trace_replay_src.exists():
+        sys.path.insert(0, str(trace_replay_src))
+    if evals_src.exists():
+        sys.path.insert(0, str(evals_src))
     from traces.trace_replay_engine import TraceReplayEngine, ReplayEvent
     TRACE_REPLAY_AVAILABLE = True
 except ImportError:
@@ -545,21 +552,32 @@ async def list_traces():
     # Get project root directory
     current_file = Path(__file__).resolve()
     project_root = current_file.parent.parent.parent  # Go up from server.py -> backend -> demos -> project root
-    traces_dir = project_root / "evals" / "data" / "traces"
-    
-    if not traces_dir.exists():
-        logger.warning(f"Traces directory not found: {traces_dir}")
-        return {"traces": []}
-    
+
+    # Search multiple possible trace locations in priority order
+    candidate_dirs = [
+        project_root / "demos" / "backend" / "trace_replay" / "data" / "traces",
+        project_root / "trace_replay" / "data" / "traces",
+        project_root / "evals" / "data" / "traces",
+        project_root / "ExAID" / "evals" / "data" / "traces",
+    ]
+
     traces = []
-    for trace_file in sorted(traces_dir.glob("*.trace.jsonl.gz")):
-        # Extract case_id from filename (e.g., "case-33651373.trace.jsonl.gz" -> "case-33651373")
-        case_id = trace_file.stem.replace(".trace.jsonl", "")
-        traces.append({
-            "case_id": case_id,
-            "file_path": str(trace_file.relative_to(project_root))
-        })
-    
+    found_any = False
+    for traces_dir in candidate_dirs:
+        if not traces_dir.exists():
+            continue
+        found_any = True
+        for trace_file in sorted(traces_dir.glob("*.trace.jsonl.gz")):
+            # Extract case_id from filename (e.g., "case-33651373.trace.jsonl.gz" -> "case-33651373")
+            case_id = trace_file.stem.replace(".trace.jsonl", "")
+            traces.append({
+                "case_id": case_id,
+                "file_path": str(trace_file.relative_to(project_root))
+            })
+
+    if not found_any:
+        logger.warning("No trace directories found in candidates: %s", candidate_dirs)
+
     return {"traces": traces}
 
 
@@ -569,13 +587,38 @@ async def replay_trace_file(trace_file_path: str):
     Args:
         trace_file_path: Path to trace file (relative to project root)
     """
-    # Get project root directory
+    # Resolve trace path against multiple candidate directories
     current_file = Path(__file__).resolve()
     project_root = current_file.parent.parent.parent
-    full_trace_path = project_root / trace_file_path
-    
-    if not full_trace_path.exists():
-        raise HTTPException(status_code=404, detail=f"Trace file not found: {trace_file_path}")
+
+    requested = Path(trace_file_path)
+    if requested.is_absolute() and requested.exists():
+        full_trace_path = requested
+    else:
+        # Try direct relative to project
+        candidate = project_root / requested
+        if candidate.exists():
+            full_trace_path = candidate
+        else:
+            # Search common trace directories for matching filename
+            candidate_dirs = [
+                project_root / "demos" / "backend" / "trace_replay" / "data" / "traces",
+                project_root / "trace_replay" / "data" / "traces",
+                project_root / "evals" / "data" / "traces",
+                project_root / "ExAID" / "evals" / "data" / "traces",
+            ]
+            found = None
+            for d in candidate_dirs:
+                if not d.exists():
+                    continue
+                p = d / requested.name
+                if p.exists():
+                    found = p
+                    break
+            if found:
+                full_trace_path = found
+            else:
+                raise HTTPException(status_code=404, detail=f"Trace file not found: {trace_file_path}")
     
     # Initialize EXAIM for summary generation
     exaim = EXAIM()
