@@ -5,8 +5,8 @@
 # Used by: CDSS demo agents (cardiology, internal_medicine, laboratory, orchestrator, radiology)
 # Purpose: Generate reasoning traces from specialized agents
 mas:
-  provider: openai
-  model: google/medgemma-1.5-4b-it
+  provider: google
+  model: gemini-2.5-flash-lite
   streaming: true
   # Env overrides: MAS_LLM_PROVIDER, MAS_LLM_MODEL
 
