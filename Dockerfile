@@ -53,7 +53,6 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 # Copy application code (EXAIM core logic and models)
 COPY exaim_core ./exaim_core
-COPY exaid_core ./exaid_core
 COPY infra ./infra
 COPY demos/cdss_example ./demos/cdss_example
 COPY demos/backend ./demos/backend
