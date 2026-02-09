@@ -5,8 +5,8 @@
 # Used by: CDSS demo agents (cardiology, internal_medicine, laboratory, orchestrator, radiology)
 # Purpose: Generate reasoning traces from specialized agents
 mas:
-  provider: google
-  model:  gemini-2.5-flash-lite
+  provider: openai
+  model: google/medgemma-1.5-4b-it
   streaming: true
   # Env overrides: MAS_LLM_PROVIDER, MAS_LLM_MODEL
 
@@ -26,7 +26,7 @@ summarizer:
 # Uses guided JSON generation with BufferAnalysis schema for structured output
 # vLLM server on port 8001 with Outlines backend for guaranteed JSON format
 buffer_agent:
-  provider: google
-  model: gemini-2.5-flash-lite
+  provider: openai
+  model: google/medgemma-1.5-4b-it
   streaming: true
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL, OPENAI_BASE_URL=http://localhost:8001/v1
