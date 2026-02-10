@@ -239,10 +239,10 @@ def get_buffer_agent_system_prompt() -> str:
          
          <examples>
          Input: "I agree with that assessment."
-         Output: {"rationale": "Just agreement, no new info.", "stream_state": "SAME_TOPIC_CONTINUING", "is_relevant": false, "is_novel": false, "is_complete": true}
+         Output: {{"rationale": "Just agreement, no new info.", "stream_state": "SAME_TOPIC_CONTINUING", "is_relevant": false, "is_novel": false, "is_complete": true}}
          
          Input: "Recommend CT Head to rule out bleed." (Previous summary: None)
-         Output: {"rationale": "New actionable diagnostic step.", "stream_state": "SAME_TOPIC_CONTINUING", "is_relevant": true, "is_novel": true, "is_complete": true}
+         Output: {{"rationale": "New actionable diagnostic step.", "stream_state": "SAME_TOPIC_CONTINUING", "is_relevant": true, "is_novel": true, "is_complete": true}}
          </examples>
          
          <instructions>
@@ -252,15 +252,15 @@ def get_buffer_agent_system_prompt() -> str:
          - OUTPUT ONLY VALID JSON. No markdown formatting. No intro text.
          </instructions>
          
-         <json_schema>
-         {
-           "rationale": "string (max 15 words)",
-           "stream_state": "enum",
-           "is_relevant": boolean,
-           "is_novel": boolean,
-           "is_complete": boolean
-         }
-         </json_schema>
+             <json_schema>
+             {{
+                "rationale": "string (max 15 words)",
+                "stream_state": "enum",
+                "is_relevant": boolean,
+                "is_novel": boolean,
+                "is_complete": boolean
+             }}
+             </json_schema>
          """
 
 def get_buffer_agent_user_prompt() -> str:
