@@ -6,7 +6,10 @@ import json
 import re
 import logging
 from infra import get_llm, LLMRole
-from exaim_core.utils.prompts import get_summarizer_system_prompt, get_summarizer_user_prompt
+from exaim_core.utils.prompts import (
+    get_summarizer_system_prompt,
+    get_summarizer_user_prompt,
+)
 from exaim_core.schema.agent_segment import AgentSegment
 from exaim_core.utils.json_utils import extract_json_from_text, extract_json_with_cot_fallback
 
@@ -18,6 +21,12 @@ class SummarizerAgent:
         try:
             self.guided_json_schema = AgentSummary.model_json_schema()
         except Exception:
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Failed to generate guided_json schema from AgentSummary.model_json_schema(); "
+                "guided JSON will be disabled.",
+                exc_info=True,
+            )
             self.guided_json_schema = None
         try:
             self.llm = self.base_llm.with_structured_output(
@@ -36,14 +45,15 @@ class SummarizerAgent:
             ("user", get_summarizer_user_prompt()),
         ])
         
-        # Field limits for rewrite prompts and validation (match schema exactly)
+        # Field limits for validation (word counts, match schema guidance)
+        # Values represent maximum allowed words per field
         self.field_limits = {
-            'status_action': 150,
-            'key_findings': 180,
-            'differential_rationale': 210,
-            'uncertainty_confidence': 120,
-            'recommendation_next_step': 180,
-            'agent_contributions': 150
+            'status_action': 25,
+            'key_findings': 30,
+            'differential_rationale': 35,
+            'uncertainty_confidence': 20,
+            'recommendation_next_step': 30,
+            'agent_contributions': 25
         }
     
 
@@ -51,8 +61,9 @@ class SummarizerAgent:
     def _validate_and_truncate(self, summary: AgentSummary) -> AgentSummary:
         """Proactively validate and truncate summary fields to ensure limits.
         
-        Since 4b models cannot reliably count characters, we ALWAYS validate
+        Since 4b models cannot reliably count words, we ALWAYS validate
         and truncate as needed before returning any summary.
+        Preserves full text in full_* fields when truncation occurs.
         
         Args:
             summary: AgentSummary that may exceed limits
@@ -61,21 +72,25 @@ class SummarizerAgent:
             AgentSummary with fields guaranteed to be within limits
         """
         logger = logging.getLogger(__name__)
-        needs_truncation = False
-        output_dict = {}
+        output_dict = summary.model_dump()
         
-        for field, max_len in self.field_limits.items():
-            value = getattr(summary, field, '')
-            if len(str(value)) > max_len:
-                needs_truncation = True
-                logger.warning(f"Field '{field}' exceeds limit: {len(str(value))} > {max_len}. Truncating.")
-                output_dict[field] = self._truncate_field(str(value), max_len)
+        def _word_count(s: str) -> int:
+            return len(str(s).split()) if s is not None else 0
+
+        for field, max_words in self.field_limits.items():
+            value = str(getattr(summary, field, ''))
+            wc = _word_count(value)
+            if wc > max_words:
+                logger.warning(f"Field '{field}' exceeds word limit: {wc} > {max_words}. Truncating and preserving full text.")
+                # Preserve full text in full_* field
+                output_dict[f"full_{field}"] = value
+                # Truncate main field for display
+                output_dict[field] = self._truncate_field(value, max_words)
             else:
-                output_dict[field] = value
+                # No truncation needed
+                output_dict[f"full_{field}"] = None
         
-        if needs_truncation:
-            return AgentSummary(**output_dict)
-        return summary
+        return AgentSummary(**output_dict)
 
     def _parse_llm_output(self, response) -> AgentSummary:
         """Parse LLM output into AgentSummary, handling both structured and text outputs."""
@@ -113,111 +128,80 @@ class SummarizerAgent:
             return response
 
     def _extract_max_length_violations(self, validation_error: ValidationError) -> Dict[str, int]:
-        """Extract fields that violated max_length constraints from ValidationError.
-        
+        """Extract fields that violated length/word constraints from ValidationError.
+
         Returns:
-            Dict mapping field names to their max_length limits
+            Dict mapping field names to their max_word limits
         """
         violations = {}
         for error in validation_error.errors():
-            if error['type'] == 'string_too_long':
-                field_path = error.get('loc', ())
-                if field_path:
-                    field_name = field_path[-1]
-                    # Extract max_length from ctx if available
-                    ctx = error.get('ctx', {})
-                    max_length = ctx.get('max_length')
-                    if max_length:
-                        violations[field_name] = max_length
-                    elif field_name in self.field_limits:
-                        violations[field_name] = self.field_limits[field_name]
+            field_path = error.get('loc', ())
+            if not field_path:
+                continue
+            field_name = field_path[-1]
+            ctx = error.get('ctx', {}) or {}
+            # Prefer explicit max_words in ctx if present
+            max_words = ctx.get('max_words')
+            if max_words:
+                violations[field_name] = max_words
+                continue
+
+            # Fallback: parse message for a max_words token (validator may include it)
+            msg = error.get('msg', '')
+            m = re.search(r'max_words\s*=\s*(\d+)', msg)
+            if m:
+                violations[field_name] = int(m.group(1))
+                continue
+
+            # Last resort: use configured field_limits if present
+            if field_name in self.field_limits:
+                violations[field_name] = self.field_limits[field_name]
+
         return violations
     
-    def _truncate_field(self, text: str, max_length: int) -> str:
-        """Truncate a field to max_length, preserving word boundaries when possible.
-        
+    def _truncate_field(self, text: str, max_words: int) -> str:
+        """Truncate a field to a maximum number of words.
+
         Args:
             text: Text to truncate
-            max_length: Maximum allowed length
-            
+            max_words: Maximum allowed words
+
         Returns:
-            Truncated text
+            Truncated text (first max_words words)
         """
-        if len(text) <= max_length:
+        words = str(text).split()
+        if len(words) <= max_words:
             return text
-        
-        # Try to truncate at a word boundary
-        truncated = text[:max_length]
-        # Find the last space before the limit
-        last_space = truncated.rfind(' ')
-        if last_space > max_length * 0.8:  # Only use word boundary if it's not too far back
-            truncated = truncated[:last_space]
-        else:
-            truncated = truncated[:max_length]
-        
-        return truncated
+        return " ".join(words[:max_words])
     
     def _apply_fallback_truncation(self, output_dict: Dict[str, Any]) -> AgentSummary:
-        """Apply fallback truncation to fields that exceed limits.
-        
-        This is a last resort when the LLM fails to comply after retries.
-        
+        """Apply fallback truncation to fields that exceed word limits.
+
+        This is a last resort when the LLM fails to comply.
+        Preserves full text in full_* fields when truncation occurs.
+
         Args:
             output_dict: Dictionary with field values that may exceed limits
-            
+
         Returns:
             AgentSummary with truncated fields
         """
         truncated_dict = {}
-        for field, max_len in self.field_limits.items():
-            value = output_dict.get(field, '')
-            if len(str(value)) > max_len:
-                truncated_dict[field] = self._truncate_field(str(value), max_len)
+        for field, max_words in self.field_limits.items():
+            value = str(output_dict.get(field, ''))
+            if len(value.split()) > max_words:
+                # Preserve full text
+                truncated_dict[f"full_{field}"] = value
+                # Truncate for display
+                truncated_dict[field] = self._truncate_field(value, max_words)
             else:
                 truncated_dict[field] = value
-        
+                truncated_dict[f"full_{field}"] = None
+
         return AgentSummary(**truncated_dict)
     
-    def _create_rewrite_prompt(self, previous_output: Dict[str, Any], violations: Dict[str, int]) -> str:
-        """Create a targeted rewrite prompt for fields that exceeded max_length.
-        
-        Args:
-            previous_output: The previous output that failed validation (as dict)
-            violations: Dict mapping field names to their max_length limits
-            
-        Returns:
-            Rewrite prompt string
-        """
-        violation_list = []
-        for field, max_len in violations.items():
-            current_value = previous_output.get(field, '')
-            current_len = len(str(current_value))
-            violation_list.append(
-                f"- {field}: currently {current_len} characters, must be ≤ {max_len} characters (need to remove {current_len - max_len} characters)"
-            )
-        
-        violations_text = '\n'.join(violation_list)
-        
-        prompt = f"""⚠️ CRITICAL REWRITE REQUEST ⚠️
-
-Your previous output was REJECTED because it exceeded character limits. You MUST shorten the following fields:
-
-{violations_text}
-
-Your previous output:
-{json.dumps(previous_output, indent=2)}
-
-MANDATORY INSTRUCTIONS:
-1. Shorten ONLY the fields listed above to meet their character limits EXACTLY
-2. Count characters as you shorten - verify each field is ≤ its limit
-3. Preserve all semantic meaning and clinical information
-4. Use abbreviations, remove redundant words, prioritize essential facts
-5. Keep all other fields exactly as they are
-6. Return the complete output with shortened fields
-
-VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure compliance."""
-        
-        return prompt
+    # Local truncation is used for length violations to avoid repeated retries
+    # and reduce latency when small models exceed field limits.
 
     def _extract_validation_error_from_exception(self, e: Exception) -> tuple[ValidationError | None, dict | None]:
         """Extract ValidationError and parsed JSON from LangChain exception.
@@ -355,10 +339,9 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
     ) -> AgentSummary:
         """Summarize agent output with automatic retry and fallback truncation.
         
-        This method attempts to get a valid summary up to 3 times:
+        This method attempts to get a valid summary and enforces field limits:
         1. Initial attempt with structured output
-        2. Retry with rewrite prompt if character limits exceeded
-        3. Fallback truncation if retry still fails
+        2. Fallback truncation on length violations
         
         Args:
             segments_with_agents: List of AgentSegment items representing agent contributions
@@ -397,7 +380,6 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
             summary = self._parse_llm_output(response)
             
             # CRITICAL: Always validate and truncate before returning
-            # 4b models cannot reliably count characters, so we enforce limits here
             return self._validate_and_truncate(summary)
             
         except Exception as e:
@@ -409,63 +391,25 @@ VERIFY BEFORE SUBMITTING: Count characters in each shortened field to ensure com
                 violations = self._extract_max_length_violations(validation_error)
                 
                 if violations:
-                    # Attempt 2: Retry with rewrite prompt
-                    try:
-                        # Get raw output if not already extracted
-                        if previous_output is None:
-                            previous_output = await self._get_raw_output(
-                                summary_history,
-                                latest_summary,
-                                new_buffer,
-                                history_k,
-                            )
-                        
-                        if previous_output is None:
-                            # Can't extract output, use fallback truncation on a minimal dict
-                            # This shouldn't happen, but we'll handle it gracefully
-                            raise ValueError("Could not extract previous output for rewrite")
-                        
-                        # Create rewrite prompt
-                        rewrite_prompt_text = self._create_rewrite_prompt(previous_output, violations)
-                        
-                        # Create rewrite prompt template
-                        rewrite_prompt = ChatPromptTemplate.from_messages([
-                            ("system", get_summarizer_system_prompt()),
-                            ("user", rewrite_prompt_text),
-                        ])
-                        
-                        # Retry with rewrite prompt
-                        rewrite_chain = rewrite_prompt | self.llm
-                        extra_body = {"guided_json": self.guided_json_schema} if self.guided_json_schema is not None else None
-                        if extra_body is not None:
-                            response = await rewrite_chain.ainvoke({}, extra_body=extra_body)
-                        else:
-                            response = await rewrite_chain.ainvoke({})
-                        summary = self._parse_llm_output(response)
-                        return self._validate_and_truncate(summary)
-                    
-                    except Exception as retry_error:
-                        # Attempt 3: Fallback truncation
-                        # Get the raw output if we don't have it
-                        if previous_output is None:
-                            previous_output = await self._get_raw_output(
-                                summary_history,
-                                latest_summary,
-                                new_buffer,
-                                history_k,
-                            )
-                        
-                        if previous_output is None:
-                            # Last resort: re-raise the original validation error
-                            raise validation_error
-                        
-                        # Apply fallback truncation
-                        logger = logging.getLogger(__name__)
-                        logger.warning(
-                            f"Summarizer agent failed to comply with character limits after retry. "
-                            f"Applying fallback truncation to fields: {list(violations.keys())}"
+                    if previous_output is None:
+                        previous_output = await self._get_raw_output(
+                            summary_history,
+                            latest_summary,
+                            new_buffer,
+                            history_k,
                         )
-                        return self._apply_fallback_truncation(previous_output)
+
+                    if previous_output is None:
+                        # Fall back to an empty dict with expected fields so truncation
+                        # produces a valid AgentSummary with empty/trimmed values.
+                        previous_output = {f: '' for f in self.field_limits.keys()}
+
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        "Summarizer agent: applying local truncation to fields: %s",
+                        list(violations.keys()),
+                    )
+                    return self._apply_fallback_truncation(previous_output)
                 else:
                     # Not a max_length violation, re-raise
                     raise validation_error

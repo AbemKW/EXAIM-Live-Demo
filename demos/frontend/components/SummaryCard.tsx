@@ -1,11 +1,12 @@
 'use client';
 
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useCDSSStore } from '@/store/cdssStore';
 import type { Summary } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useTheme } from '@/hooks/useTheme';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface SummaryCardProps {
   summary: Summary;
@@ -20,6 +21,20 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
   mode = 'list',
   onClick 
 }, ref) => {
+  // Track which fields are expanded (showing full text)
+  const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
+
+  const toggleFieldExpansion = (fieldKey: string) => {
+    setExpandedFields(prev => {
+      const next = new Set(prev);
+      if (next.has(fieldKey)) {
+        next.delete(fieldKey);
+      } else {
+        next.add(fieldKey);
+      }
+      return next;
+    });
+  };
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', {
@@ -37,37 +52,49 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
   const fields = [
     { 
       label: 'Status / Action', 
+      key: 'status_action',
       value: summary.data.status_action,
+      fullValue: summary.data.full_status_action,
       color: 'var(--summary-status-action)',
       bgColor: `oklch(0.50 0.08 260 / ${bgOpacity})`,
     },
     { 
       label: 'Key Findings', 
+      key: 'key_findings',
       value: summary.data.key_findings,
+      fullValue: summary.data.full_key_findings,
       color: 'var(--summary-key-findings)',
       bgColor: `oklch(0.55 0.08 150 / ${bgOpacity})`,
     },
     { 
       label: 'Differential & Rationale', 
+      key: 'differential_rationale',
       value: summary.data.differential_rationale,
+      fullValue: summary.data.full_differential_rationale,
       color: 'var(--summary-differential)',
       bgColor: `oklch(0.50 0.08 300 / ${bgOpacity})`,
     },
     { 
       label: 'Uncertainty / Confidence', 
+      key: 'uncertainty_confidence',
       value: summary.data.uncertainty_confidence,
+      fullValue: summary.data.full_uncertainty_confidence,
       color: 'var(--summary-uncertainty)',
       bgColor: `oklch(0.58 0.08 60 / ${bgOpacity})`,
     },
     { 
       label: 'Recommendation / Next Step', 
+      key: 'recommendation_next_step',
       value: summary.data.recommendation_next_step,
+      fullValue: summary.data.full_recommendation_next_step,
       color: 'var(--summary-recommendation)',
       bgColor: `oklch(0.50 0.08 180 / ${bgOpacity})`,
     },
     { 
       label: 'Agent Contributions', 
+      key: 'agent_contributions',
       value: summary.data.agent_contributions,
+      fullValue: summary.data.full_agent_contributions,
       color: 'var(--summary-contributions)',
       bgColor: `oklch(0.50 0.03 0 / ${bgOpacity})`,
     },
@@ -101,29 +128,56 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
           {/* Full Content - Always Visible */}
           <CardContent className="pt-0.5 pb-1 px-2 flex-1 overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-1 items-start h-full">
-              {fields.map((field, index) => (
-                <div 
-                  key={index} 
-                  className="summary-field-group rounded-lg p-1 transition-all backdrop-blur-md border border-border/50 dark:border-white/10 hover:border-border dark:hover:border-white/20 min-h-0"
-                  style={{
-                    borderLeft: `2px solid ${field.color}`,
-                    backgroundColor: field.bgColor,
-                    boxShadow: 'inset 0 1px 1px 0 rgba(0, 0, 0, 0.05)',
-                  }}
-                >
+              {fields.map((field, index) => {
+                const isExpanded = expandedFields.has(field.key);
+                const hasFull = field.fullValue != null && field.fullValue.trim() !== '';
+                const displayValue = (isExpanded && hasFull) ? field.fullValue : field.value;
+                
+                return (
                   <div 
-                    className="text-xs font-extrabold uppercase tracking-wider mb-0.5 leading-tight"
-                    style={{ 
-                      color: field.color,
-                      fontWeight: 800,
-                      letterSpacing: '0.05em'
+                    key={index} 
+                    className="summary-field-group rounded-lg p-1 transition-all backdrop-blur-md border border-border/50 dark:border-white/10 hover:border-border dark:hover:border-white/20 min-h-0"
+                    style={{
+                      borderLeft: `2px solid ${field.color}`,
+                      backgroundColor: field.bgColor,
+                      boxShadow: 'inset 0 1px 1px 0 rgba(0, 0, 0, 0.05)',
                     }}
                   >
-                    {field.label}
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div 
+                        className="text-xs font-extrabold uppercase tracking-wider leading-tight"
+                        style={{ 
+                          color: field.color,
+                          fontWeight: 800,
+                          letterSpacing: '0.05em'
+                        }}
+                      >
+                        {field.label}
+                      </div>
+                      {hasFull && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFieldExpansion(field.key);
+                          }}
+                          className="text-xs px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors flex items-center gap-0.5"
+                          style={{ color: field.color }}
+                          title={isExpanded ? 'Show truncated' : 'Show full text'}
+                        >
+                          {isExpanded ? (
+                            <><ChevronUp className="w-3 h-3" /> Less</>
+                          ) : (
+                            <><ChevronDown className="w-3 h-3" /> Full</>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-xs text-foreground leading-relaxed font-medium break-words" style={{ fontWeight: 500 }}>
+                      {displayValue}
+                    </div>
                   </div>
-                  <div className="text-xs text-foreground leading-relaxed font-medium break-words" style={{ fontWeight: 500 }}>{field.value}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

@@ -36,7 +36,7 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
     provider = provider.lower()
     model_name = model or "google/medgemma-1.5-4b-it"
 
-    # OpenAI provider now handles vLLM via OpenAI-compatible API
+        # OpenAI provider now handles vLLM via OpenAI-compatible API
     if provider == "openai":
         base_url = os.getenv("OPENAI_BASE_URL", None)
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
@@ -45,6 +45,9 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         # so callers can pass per-invoke `extra_body` (e.g. guided_json) when needed.
         model_kwargs = {}
         if role == LLMRole.SUMMARIZER:
+            # Increase repetition_penalty for summarizer to reduce repetitiveness
+            # (4B models tend to repeat more; an aggressive penalty helps).
+            model_kwargs = {"repetition_penalty": 1.3}
             # Default behavior: deterministic, constrained sampling for summarization.
             # Per-call `extra_body` (for vLLM guided_json) is supported and should be
             # provided by the caller/agent when applicable.
