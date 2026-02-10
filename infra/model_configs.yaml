@@ -13,7 +13,7 @@ mas:
 # Summarizer - Clinical Summary Generation
 # Used by: SummarizerAgent
 # Purpose: Generate structured clinical summaries from agent traces
-# vLLM server on port 8001 (dedicated instance, 60% GPU memory, longer context)
+# vLLM server on port 8001 (shared instance with buffer agent)
 summarizer:
   provider: openai
   model: unsloth/medgemma-27b-text-it-unsloth-bnb-4bit
@@ -25,10 +25,10 @@ summarizer:
 # Used by: BufferAgent
 # Purpose: Decide when to trigger summarization based on trace completeness and novelty
 # Uses guided JSON generation with BufferAnalysis schema for structured output
-# vLLM server on port 8002 (dedicated instance, 35% GPU memory, high throughput)
+# vLLM server on port 8001 (shared instance, request-level isolation)
 buffer_agent:
   provider: openai
   model: unsloth/medgemma-27b-text-it-unsloth-bnb-4bit
   streaming: true
-  base_url: http://localhost:8002/v1
+  base_url: http://localhost:8001/v1
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL, BUFFER_AGENT_BASE_URL

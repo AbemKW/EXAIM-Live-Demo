@@ -38,14 +38,9 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
 
         # OpenAI provider now handles vLLM via OpenAI-compatible API
     if provider == "openai":
-        # Role-specific base URL override (for dual vLLM instances)
+        # Use config-provided base_url or fall back to env variable
         if base_url is None:
-            if role == LLMRole.SUMMARIZER:
-                base_url = os.getenv("SUMMARIZER_BASE_URL", os.getenv("OPENAI_BASE_URL", "http://localhost:8001/v1"))
-            elif role == LLMRole.BUFFER_AGENT:
-                base_url = os.getenv("BUFFER_AGENT_BASE_URL", os.getenv("OPENAI_BASE_URL", "http://localhost:8002/v1"))
-            else:
-                base_url = os.getenv("OPENAI_BASE_URL", None)
+            base_url = os.getenv("OPENAI_BASE_URL", "http://localhost:8001/v1")
         
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
         
