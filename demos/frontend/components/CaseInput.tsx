@@ -40,10 +40,31 @@ export default function CaseInput({ onError }: CaseInputProps) {
         throw new Error('Failed to fetch traces');
       }
       const data = await response.json();
-      setTraces(data.traces || []);
+      
+      // Case descriptions mapping
+      const caseDescriptions: Record<string, string> = {
+        'case-33651373.trace.jsonl.gz': 'Hereditary Spinocerebellar Ataxia presenting with progressive cerebellar ataxia and dysarthria.',
+        'case-34895021.trace.jsonl.gz': 'Stage II lung adenocarcinoma in a 40-year-old woman with a significant family history of cancer.',
+        'case-34922935.trace.jsonl.gz': 'Duodenal cholesterolosis characterized by multiple yellowish elevated lesions found on endoscopy.',
+        'case-34989141.trace.jsonl.gz': 'Achondroplasia defined by disproportionate short stature and bilateral short femurs on ultrasound.',
+        'case-35478097.trace.jsonl.gz': 'Bilateral conjunctival papilloma with pinkish nodular lesions unresponsive to anti-inflammatory treatment.',
+        'case-35602476.trace.jsonl.gz': 'Autosomal Dominant Hyper-IgE Syndrome with high serum IgE, recurrent infections, and a STAT3 mutation.',
+        'case-35795791.trace.jsonl.gz': 'Lennox-Gastaut Syndrome involving multiple seizure types, cognitive impairment, and slow spike-wave EEG patterns.',
+        'case-37308247.trace.jsonl.gz': 'Vestibular dysfunction and continuous dizziness likely secondary to a neurodegenerative disorder.',
+        'case-37337880.trace.jsonl.gz': 'Apert syndrome featuring craniosynostosis, syndactyly, and distinct facial anomalies.',
+        'case-pmc9949831.trace.jsonl.gz': 'Newborn craniofacial anomalies including hypotelorism and a single blind-ended nostril.'
+      };
+      
+      // Add descriptions to traces
+      const tracesWithDescriptions = (data.traces || []).map((trace: TraceFile) => ({
+        ...trace,
+        description: caseDescriptions[trace.case_id] || trace.case_id
+      }));
+      
+      setTraces(tracesWithDescriptions);
       // Auto-select first trace if available
-      if (data.traces && data.traces.length > 0 && !selectedTrace) {
-        setSelectedTrace(data.traces[0].file_path);
+      if (tracesWithDescriptions.length > 0 && !selectedTrace) {
+        setSelectedTrace(tracesWithDescriptions[0].file_path);
       }
     } catch (error) {
       console.error('Error fetching traces:', error);
@@ -186,10 +207,10 @@ export default function CaseInput({ onError }: CaseInputProps) {
             disabled={isProcessing || loadingTraces}
             className="w-full px-4 py-3 rounded-xl bg-muted/20 backdrop-blur-xl border border-white/10 focus:border-primary/50 focus:bg-muted/30 focus:ring-primary/50 focus:ring-[3px] transition-all shadow-lg text-foreground disabled:opacity-50 disabled:cursor-not-allowed outline-none custom-select"
           >
-            <option value="">Select a trace file...</option>
+            <option value="">Select a case...</option>
             {traces.map((trace) => (
               <option key={trace.file_path} value={trace.file_path}>
-                {trace.case_id}
+                {trace.description || trace.case_id}
               </option>
             ))}
           </select>

@@ -46,6 +46,7 @@ export type DemoMode = "live_demo" | "trace_replay";
 export interface TraceFile {
   case_id: string;
   file_path: string;
+  description?: string;
 }
 
 export interface CaseRequest {
