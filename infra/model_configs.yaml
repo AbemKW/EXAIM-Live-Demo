@@ -16,7 +16,7 @@ mas:
 # vLLM server on port 8001 (internal only, not exposed publicly)
 summarizer:
   provider: openai
-  model: unsloth/medgemma-4b-it-unsloth-bnb-4bit
+  model: unsloth/medgemma-27b-text-it-unsloth-bnb-4bit
   streaming: true
   # Env overrides: SUMMARIZER_LLM_PROVIDER, SUMMARIZER_LLM_MODEL, OPENAI_BASE_URL=http://localhost:8001/v1
 
@@ -27,6 +27,6 @@ summarizer:
 # vLLM server on port 8001 with Outlines backend for guaranteed JSON format
 buffer_agent:
   provider: openai
-  model: unsloth/medgemma-4b-it-unsloth-bnb-4bit
+  model: unsloth/medgemma-27b-text-it-unsloth-bnb-4bit
   streaming: true
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL, OPENAI_BASE_URL=http://localhost:8001/v1
