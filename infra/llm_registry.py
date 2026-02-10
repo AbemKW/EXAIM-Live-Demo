@@ -32,13 +32,21 @@ def _load_default_configs():
                 _DEFAULT_CONFIGS = yaml.safe_load(f) or {}
     return _DEFAULT_CONFIGS
 
-def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None, role: str = ""):
+def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None, role: str = "", base_url: Optional[str] = None):
     provider = provider.lower()
     model_name = model or "google/medgemma-1.5-4b-it"
 
         # OpenAI provider now handles vLLM via OpenAI-compatible API
     if provider == "openai":
-        base_url = os.getenv("OPENAI_BASE_URL", None)
+        # Role-specific base URL override (for dual vLLM instances)
+        if base_url is None:
+            if role == LLMRole.SUMMARIZER:
+                base_url = os.getenv("SUMMARIZER_BASE_URL", os.getenv("OPENAI_BASE_URL", "http://localhost:8001/v1"))
+            elif role == LLMRole.BUFFER_AGENT:
+                base_url = os.getenv("BUFFER_AGENT_BASE_URL", os.getenv("OPENAI_BASE_URL", "http://localhost:8002/v1"))
+            else:
+                base_url = os.getenv("OPENAI_BASE_URL", None)
+        
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
         
         # Model-specific kwargs for vLLM extra_body parameters. Keep this empty by default
@@ -109,7 +117,8 @@ class LLMRegistry:
             model=config.get("model"),
             streaming=config.get("streaming", True),
             temperature=temperature,
-            role=role_str
+            role=role_str,
+            base_url=config.get("base_url")
         )
         self._instances[role_str] = instance
         return instance
