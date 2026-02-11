@@ -62,7 +62,7 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             )
         
         if role == LLMRole.BUFFER_AGENT:
-            model_kwargs = {"max_tokens": 512}
+            model_kwargs = {"max_tokens": 1200}
             return ChatOpenAI(
                 model=model_name,
                 base_url=base_url,

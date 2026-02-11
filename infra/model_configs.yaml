@@ -28,7 +28,7 @@ summarizer:
 # vLLM server on port 8002
 buffer_agent:
   provider: openai
-  model: unsloth/medgemma-27b-text-it-unsloth-bnb-4bit
+  model: unsloth/medgemma-4b-it-unsloth-bnb-4bit
   streaming: true
   base_url: http://localhost:8002/v1
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL, BUFFER_AGENT_BASE_URL
