@@ -269,7 +269,7 @@ class SummarizerAgent:
         history_k: int = 3,
     ) -> Dict[str, Any]:
         """Get raw LLM output as a dictionary, extracting JSON if needed.
-        
+
         Returns:
             Dictionary with field values, or None if extraction fails
         """
@@ -277,16 +277,20 @@ class SummarizerAgent:
             raw_chain = self.summarize_prompt | self.base_llm
             # Ask vLLM to constrain output to the AgentSummary JSON schema when available
             extra_body = {"guided_json": self.guided_json_schema} if self.guided_json_schema is not None else None
+            
+            # Limit the history to prevent token limit issues
+            limited_history = summary_history[-history_k:] if len(summary_history) > history_k else summary_history
+            
             if extra_body is not None:
                 raw_response = await raw_chain.ainvoke({
-                "summary_history": ",\n".join(summary_history),
+                "summary_history": ",\n".join(limited_history),
                 "latest_summary": latest_summary,
                 "new_buffer": new_buffer,
                 "history_k": history_k
                 }, extra_body=extra_body)
             else:
                 raw_response = await raw_chain.ainvoke({
-                    "summary_history": ",\n".join(summary_history),
+                    "summary_history": ",\n".join(limited_history),
                     "latest_summary": latest_summary,
                     "new_buffer": new_buffer,
                     "history_k": history_k
@@ -338,58 +342,61 @@ class SummarizerAgent:
         history_k: int = 3,
     ) -> AgentSummary:
         """Summarize agent output with automatic retry and fallback truncation.
-        
+
         This method attempts to get a valid summary and enforces field limits:
         1. Initial attempt with structured output
         2. Fallback truncation on length violations
-        
+
         Args:
             segments_with_agents: List of AgentSegment items representing agent contributions
             summary_history: List of previous summary strings
             latest_summary: Most recent summary string
             history_k: The number of previous summaries to include in history
-            
+
         Returns:
             AgentSummary object
-            
+
         Raises:
             ValidationError: If validation fails for non-length-related reasons
             Exception: For other unexpected errors
         """
         summarize_chain = self.summarize_prompt | self.llm
-        
+
         new_buffer = self.format_segments_for_prompt(segments_with_agents)
-        
+
+        # Limit the history to prevent token limit issues
+        limited_history = summary_history[-history_k:] if len(summary_history) > history_k else summary_history
+
         # Attempt 1: Initial structured output
         try:
             extra_body = {"guided_json": self.guided_json_schema} if self.guided_json_schema is not None else None
             if extra_body is not None:
                 response = await summarize_chain.ainvoke({
-                "summary_history": ",\n".join(summary_history),
+                "summary_history": ",\n".join(limited_history),
                 "latest_summary": latest_summary,
                 "new_buffer": new_buffer,
                 "history_k": history_k
                 }, extra_body=extra_body)
             else:
                 response = await summarize_chain.ainvoke({
-                    "summary_history": ",\n".join(summary_history),
+                    "summary_history": ",\n".join(limited_history),
                     "latest_summary": latest_summary,
                     "new_buffer": new_buffer,
                     "history_k": history_k
                 })
             summary = self._parse_llm_output(response)
-            
+
             # CRITICAL: Always validate and truncate before returning
             return self._validate_and_truncate(summary)
-            
+
         except Exception as e:
             # Extract ValidationError from LangChain exception wrapper
             validation_error, previous_output = self._extract_validation_error_from_exception(e)
-            
+
             if validation_error:
                 # Check if this is a max_length violation
                 violations = self._extract_max_length_violations(validation_error)
-                
+
                 if violations:
                     if previous_output is None:
                         previous_output = await self._get_raw_output(

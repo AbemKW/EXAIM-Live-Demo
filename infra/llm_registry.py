@@ -41,14 +41,14 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         # Use config-provided base_url or fall back to env variable
         if base_url is None:
             base_url = os.getenv("OPENAI_BASE_URL", "http://localhost:8001/v1")
-        
+
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
-        
+
         # Model-specific kwargs for vLLM extra_body parameters. Keep this empty by default
         # so callers can pass per-invoke `extra_body` (e.g. guided_json) when needed.
         model_kwargs = {}
         if role == LLMRole.SUMMARIZER:
-            model_kwargs = {"frequency_penalty": 1.3}
+            model_kwargs = {"frequency_penalty": 1.3, "max_tokens": 3072}
             # Default behavior: deterministic, constrained sampling for summarization.
             # Per-call `extra_body` (for vLLM guided_json) is supported and should be
             # provided by the caller/agent when applicable.
@@ -61,6 +61,17 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                 model_kwargs=model_kwargs,
             )
         
+        if role == LLMRole.BUFFER_AGENT:
+            model_kwargs = {"max_tokens": 2048}
+            return ChatOpenAI(
+                model=model_name,
+                base_url=base_url,
+                api_key=api_key,
+                temperature=0.0,  # Deterministic for consistent decision-making
+                top_p=0.9,
+                model_kwargs=model_kwargs,
+            )
+
         return ChatOpenAI(
             model=model_name,
             base_url=base_url,
