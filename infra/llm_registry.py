@@ -48,7 +48,7 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
         # so callers can pass per-invoke `extra_body` (e.g. guided_json) when needed.
         model_kwargs = {}
         if role == LLMRole.SUMMARIZER:
-            model_kwargs = {"frequency_penalty": 1.3, "max_tokens": 2000}
+            model_kwargs = {"frequency_penalty": 1.3, "max_tokens": 1200}
             # Default behavior: deterministic, constrained sampling for summarization.
             # Per-call `extra_body` (for vLLM guided_json) is supported and should be
             # provided by the caller/agent when applicable.
