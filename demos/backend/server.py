@@ -149,7 +149,7 @@ async def health_check():
             )
     
     # Check vLLM availability
-    vllm_url = os.environ.get("OPENAI_BASE_URL", "http://localhost:8001/v1")
+    vllm_url = os.environ.get("OPENAI_BASE_URL", "http://localhost:8000/v1")
     models_endpoint = f"{vllm_url}/models"
     
     try:

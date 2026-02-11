@@ -96,7 +96,7 @@ ENV TRANSFORMERS_CACHE=/tmp/huggingface/transformers
 ENV TORCH_HOME=/tmp/torch
 ENV USER=appuser
 ENV LOGNAME=appuser
-ENV OPENAI_BASE_URL=http://localhost:8001/v1
+ENV OPENAI_BASE_URL=http://localhost:8000/v1
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1

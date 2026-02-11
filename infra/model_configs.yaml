@@ -10,25 +10,24 @@ mas:
   streaming: true
   # Env overrides: MAS_LLM_PROVIDER, MAS_LLM_MODEL
 
+
 # Summarizer - Clinical Summary Generation
 # Used by: SummarizerAgent
 # Purpose: Generate structured clinical summaries from agent traces
-# vLLM server on port 8001
 summarizer:
   provider: openai
-  model: unsloth/medgemma-4b-it-unsloth-bnb-4bit
+  model: unsloth/medgemma-27b-text-it-unsloth-bnb-4bit
   streaming: true
-  base_url: http://localhost:8001/v1
+  base_url: http://localhost:8000/v1
   # Env overrides: SUMMARIZER_LLM_PROVIDER, SUMMARIZER_LLM_MODEL, SUMMARIZER_BASE_URL
 
 # Buffer Agent - Trace Trigger Decision
 # Used by: BufferAgent
 # Purpose: Decide when to trigger summarization based on trace completeness and novelty
 # Uses guided JSON generation with BufferAnalysis schema for structured output
-# vLLM server on port 8002
 buffer_agent:
   provider: openai
-  model: unsloth/medgemma-4b-it-unsloth-bnb-4bit
+  model: unsloth/medgemma-27b-text-it-unsloth-bnb-4bit
   streaming: true
-  base_url: http://localhost:8002/v1
+  base_url: http://localhost:8000/v1
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL, BUFFER_AGENT_BASE_URL

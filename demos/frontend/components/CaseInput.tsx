@@ -58,7 +58,7 @@ export default function CaseInput({ onError }: CaseInputProps) {
       // Add descriptions to traces
       const tracesWithDescriptions = (data.traces || []).map((trace: TraceFile) => ({
         ...trace,
-        description: caseDescriptions[trace.case_id] || trace.case_id
+        description: caseDescriptions[trace.file_path] || trace.file_path
       }));
       
       setTraces(tracesWithDescriptions);
