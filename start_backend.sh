@@ -20,7 +20,7 @@ for i in $(seq 1 $MAX_ATTEMPTS); do
 
     if [ "$VLLM_CODE" -eq 200 ]; then
         echo "✓ vLLM server is ready! Starting FastAPI backend..."
-        exec uvicorn demos.backend.server:app --host 0.0.0.0 --port 8000 --workers 1
+        exec uvicorn demos.backend.server:app --host 0.0.0.0 --port 8001 --workers 1
     fi
 
     echo "  vLLM (8000): HTTP $VLLM_CODE"

@@ -986,4 +986,4 @@ if __name__ == "__main__":
     print("Starting EXAIM API server...")
     print("WebSocket endpoint: ws://localhost:8000/ws")
     print("API endpoint: http://localhost:8000/api/process-case")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
