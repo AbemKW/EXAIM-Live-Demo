@@ -210,7 +210,7 @@ export default function CaseInput({ onError }: CaseInputProps) {
             <option value="">Select a case...</option>
             {traces.map((trace) => (
               <option key={trace.file_path} value={trace.file_path}>
-                {trace.description || trace.case_id}
+                {trace.description || ''}
               </option>
             ))}
           </select>
