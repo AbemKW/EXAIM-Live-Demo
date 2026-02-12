@@ -1,6 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 from exaim_core.schema.agent_summary import AgentSummary
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from pydantic import ValidationError
 import json
 import re

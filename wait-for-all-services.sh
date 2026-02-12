@@ -40,7 +40,7 @@ check_service() {
 
 
 # Check Backend API (with vLLM connectivity verification)
-if ! check_service "Backend" "http://localhost:8000/health"; then
+if ! check_service "Backend" "http://localhost:8001/health"; then
     echo ""
     echo "FATAL: Backend server is not available. Cannot start nginx."
     echo "Check backend logs for errors."
