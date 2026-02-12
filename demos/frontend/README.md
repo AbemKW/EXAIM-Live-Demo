@@ -28,7 +28,7 @@ Modern Next.js 14 (App Router) implementation of the EXAIM Clinical Decision Sup
 ### Prerequisites
 
 - Node.js 18+
-- FastAPI backend running on `localhost:8000`
+- FastAPI backend running on `localhost:8001`
 
 ### Installation
 
@@ -47,8 +47,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 Create a `.env.local` file in the `frontend` directory with the following variables:
 
 ```env
-NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_WS_URL=ws://localhost:8001/ws
+NEXT_PUBLIC_API_URL=http://localhost:8001
 ```
 
 **Note:** The `.env.local` file is excluded from version control (via `.gitignore`) to protect sensitive configuration.

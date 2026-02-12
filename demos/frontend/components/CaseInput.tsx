@@ -33,7 +33,7 @@ export default function CaseInput({ onError }: CaseInputProps) {
       // Auto-detect API URL: use relative path in production, localhost in dev
       const apiUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
         ? '' // Relative URL for production (nginx will route)
-        : 'http://localhost:8000';
+        : 'http://localhost:8001';
       
       const response = await fetch(`${apiUrl}/api/traces`);
       if (!response.ok) {
@@ -104,7 +104,7 @@ export default function CaseInput({ onError }: CaseInputProps) {
       // In development, use localhost:8000
       const apiUrl = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
         ? '' // Relative URL for production (nginx will route)
-        : 'http://localhost:8000';
+        : 'http://localhost:8001';
       
       const requestBody: CaseRequest = {
         mode,

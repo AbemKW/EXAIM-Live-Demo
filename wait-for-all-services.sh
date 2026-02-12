@@ -37,13 +37,7 @@ check_service() {
     return 1
 }
 
-# Check vLLM server
-if ! check_service "vLLM" "http://localhost:8000/v1/models"; then
-    echo ""
-    echo "FATAL: vLLM server is not available. Cannot start nginx."
-    echo "Check vLLM logs for errors."
-    exit 1
-fi
+
 
 # Check Backend API (with vLLM connectivity verification)
 if ! check_service "Backend" "http://localhost:8000/health"; then
