@@ -16,6 +16,14 @@ export interface SummaryData {
   uncertainty_confidence: string;
   recommendation_next_step: string;
   agent_contributions: string;
+  
+  // Optional full versions (populated when truncation occurs)
+  full_status_action?: string | null;
+  full_key_findings?: string | null;
+  full_differential_rationale?: string | null;
+  full_uncertainty_confidence?: string | null;
+  full_recommendation_next_step?: string | null;
+  full_agent_contributions?: string | null;
 }
 
 export interface Summary {
@@ -38,6 +46,7 @@ export type DemoMode = "live_demo" | "trace_replay";
 export interface TraceFile {
   case_id: string;
   file_path: string;
+  description?: string;
 }
 
 export interface CaseRequest {

@@ -149,7 +149,7 @@ async def health_check():
             )
     
     # Check vLLM availability
-    vllm_url = os.environ.get("OPENAI_BASE_URL", "http://localhost:8001/v1")
+    vllm_url = os.environ.get("OPENAI_BASE_URL", "http://158.101.123.131:1234/v1")
     models_endpoint = f"{vllm_url}/models"
     
     try:
@@ -984,6 +984,6 @@ async def stop_case():
 if __name__ == "__main__":
     import uvicorn
     print("Starting EXAIM API server...")
-    print("WebSocket endpoint: ws://localhost:8000/ws")
-    print("API endpoint: http://localhost:8000/api/process-case")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("WebSocket endpoint: ws://localhost:8001/ws")
+    print("API endpoint: http://localhost:8001/api/process-case")
+    uvicorn.run(app, host="0.0.0.0", port=8001)

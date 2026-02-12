@@ -32,41 +32,42 @@ def _load_default_configs():
                 _DEFAULT_CONFIGS = yaml.safe_load(f) or {}
     return _DEFAULT_CONFIGS
 
-def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None, role: str = ""):
+def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None, role: str = "", base_url: Optional[str] = None):
     provider = provider.lower()
-    model_name = model or "google/medgemma-1.5-4b-it"
+    model_name = model or "medgemma-27b-text-it"
 
-    # OpenAI provider now handles vLLM via OpenAI-compatible API
+        # OpenAI provider now handles vLLM via OpenAI-compatible API
     if provider == "openai":
-        base_url = os.getenv("OPENAI_BASE_URL", None)
+        # Use config-provided base_url or fall back to env variable
+        if base_url is None:
+            base_url = os.getenv("OPENAI_BASE_URL", "http://129.146.51.171:1234/v1")
+
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
-        
-        # Model-specific kwargs for vLLM extra_body parameters
+
+        # Model-specific kwargs for vLLM extra_body parameters. Keep this empty by default
+        # so callers can pass per-invoke `extra_body` (e.g. guided_json) when needed.
         model_kwargs = {}
-        
-        # Note: guided_json removed because vLLM ignores it with compressed-tensors quantization
-        # Buffer agent and summarizer use robust JSON extraction as fallback
-        
-        # Summarizer generation parameters
-        # Note: guided_json is not used because vLLM ignores it with compressed-tensors quantization
-        # Fallback JSON parsing in SummarizerAgent handles extraction robustly
         if role == LLMRole.SUMMARIZER:
-            # Use repetition penalty to improve output quality
-            model_kwargs["extra_body"] = {
-                "repetition_penalty": 1.15
-            }
-            logger.info(f"Configured summarizer with repetition_penalty (guided_json disabled for vLLM compatibility)")
-            
+            model_kwargs = {"max_tokens": 2048}
+            # Default behavior: deterministic, constrained sampling for summarization.
+            # Per-call `extra_body` (for vLLM guided_json) is supported and should be
+            # provided by the caller/agent when applicable.
             return ChatOpenAI(
                 model=model_name,
                 base_url=base_url,
                 api_key=api_key,
-                temperature=0.0,  # Deterministic for consistent retry behavior
-                top_p=0.9,        # Slightly constrain sampling
-                max_tokens=800,   # Safety cap (valid responses ~250-350 tokens)
                 model_kwargs=model_kwargs,
             )
         
+        if role == LLMRole.BUFFER_AGENT:
+            model_kwargs = {"max_tokens": 1200}
+            return ChatOpenAI(
+                model=model_name,
+                base_url=base_url,
+                api_key=api_key,
+                model_kwargs=model_kwargs,
+            )
+
         return ChatOpenAI(
             model=model_name,
             base_url=base_url,
@@ -118,7 +119,8 @@ class LLMRegistry:
             model=config.get("model"),
             streaming=config.get("streaming", True),
             temperature=temperature,
-            role=role_str
+            role=role_str,
+            base_url=config.get("base_url")
         )
         self._instances[role_str] = instance
         return instance

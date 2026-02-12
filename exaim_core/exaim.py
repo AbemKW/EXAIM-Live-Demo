@@ -1,6 +1,7 @@
 from typing import Optional, Callable, List
 import asyncio
 import uuid
+import logging
 from exaim_core.buffer_agent.buffer_agent import BufferAgent
 from exaim_core.schema.agent_segment import AgentSegment
 from exaim_core.summarizer_agent.summarizer_agent import SummarizerAgent
@@ -106,11 +107,10 @@ class EXAIM:
             latest_summary_str: Most recent summary
             trigger_id: Unique ID for this trigger (for debugging/correlation)
         """
-        import logging
         logger = logging.getLogger(__name__)
         
         try:
-            print(f"\033[1;36m[EXAIM Background] Starting background summarization task (trigger_id={trigger_id})\033[0m")
+
             logger.info(f"[EXAIM Background] Starting background summarization task (trigger_id={trigger_id})")
             summary = await asyncio.wait_for(
                 self.summarizer_agent.summarize(
@@ -119,7 +119,7 @@ class EXAIM:
                     latest_summary_str,
                     self.history_k,
                 ),
-                timeout=120.0,
+                timeout=180.0,
             )
             
             if summary is not None:
@@ -136,18 +136,18 @@ class EXAIM:
                     except Exception as e:
                         logger.error(f"Error in summary callback: {e}")
                         
-                print(f"\033[1;36m[EXAIM Background] Summary completed successfully (trigger_id={trigger_id})\033[0m")
+
                 logger.info(f"[EXAIM Background] Summary completed successfully (trigger_id={trigger_id})")
-            else:
-                print(f"\033[1;33m[EXAIM Background] Summarizer returned None (trigger_id={trigger_id})\033[0m")
+
                 logger.warning(f"[EXAIM Background] Summarizer returned None (trigger_id={trigger_id})")
                 
         except asyncio.TimeoutError:
-            print(f"\033[1;31m[EXAIM Background] Summarizer timed out after 120s (trigger_id={trigger_id})\033[0m")
             logger.error(f"[EXAIM Background] Summarizer timed out after 120s (trigger_id={trigger_id})")
         except Exception as e:
-            print(f"\033[1;31m[EXAIM Background] Summarizer failed (trigger_id={trigger_id}): {e}\033[0m")
             logger.error(f"[EXAIM Background] Summarizer failed (trigger_id={trigger_id}): {e}", exc_info=True)
+            # Re-add segments to buffer_agent's tail so they are not lost
+            self.buffer_agent.park_tail(agent_segments)
+            logger.info(f"[EXAIM Background] Re-parked {len(agent_segments)} segments after summarizer failure (trigger_id={trigger_id})")
 
     def _get_limited_history(self, summaries: list[AgentSummary]) -> list[str]:
         """Get the last k summary entries."""
@@ -168,7 +168,7 @@ class EXAIM:
                 # Send the entire text as a single "token" for non-streaming traces
                 callback(agent_id, text)
             except Exception as e:
-                print(f"Error in trace callback: {e}")
+                logger.error(f"Error in trace callback: {e}")
         
         # Prepare previous summaries for buffer agent evaluation
         all_summaries = await self.get_all_summaries()
@@ -190,7 +190,7 @@ class EXAIM:
             summary_history_strs = self._get_limited_history(all_summaries[:-1])
             latest_summary_str = self._format_summary_for_history(all_summaries[-1]) if all_summaries else "No summaries yet."
             
-            print(f"\033[1;33m[EXAIM] Trigger {trigger_id}: Flushed {len(agent_segments)} segments from received_trace\033[0m")
+            logger.info(f"[EXAIM] Trigger {trigger_id}: Flushed {len(agent_segments)} segments from received_trace")
             
             # Create task with reference to prevent GC
             task = asyncio.create_task(self._run_background_summary(
@@ -214,15 +214,11 @@ class EXAIM:
             try:
                 callback(agent_id, token)
             except Exception as e:
-                print(f"Error in trace callback: {e}")
+                logger.error(f"Error in trace callback: {e}")
 
         # Pass token through TokenGate
         chunk = await self.token_gate.add_token(agent_id, token)
 
-        # DEBUG: Log chunk status
-        if chunk:
-            print(f"\033[1;32m[EXAIM DEBUG] TokenGate flushed chunk for {agent_id}, length={len(chunk)}\033[0m")
-        
         # Process chunk if complete
         if chunk:
             summaries = await self.get_all_summaries()
@@ -248,10 +244,9 @@ class EXAIM:
         flush_reason: str | None = None
     ) -> Optional[AgentSummary]:
         """Process a chunk of text for summarization."""
-        import logging
         logger = logging.getLogger(__name__)
         
-        print(f"\033[1;35m[EXAIM _process_chunk] Processing chunk for {agent_id}, flush_reason={flush_reason}, chunk_length={len(chunk)}\033[0m")
+
         logger.info(f"[EXAIM] Processing chunk for {agent_id}, flush_reason={flush_reason}, chunk_length={len(chunk)}")
         
         previous_summaries = self._get_limited_history(summaries)
@@ -264,10 +259,9 @@ class EXAIM:
                 flush_reason=flush_reason,
                 history_k=self.history_k
             )
-            print(f"\033[1;35m[EXAIM _process_chunk] Buffer agent returned trigger={trigger} for {agent_id}\033[0m")
+
             logger.info(f"[EXAIM] Buffer agent returned trigger={trigger} for {agent_id}")
         except Exception as e:
-            print(f"\033[1;31m[EXAIM _process_chunk] Buffer agent failed for {agent_id}: {e}\033[0m")
             logger.error(f"[EXAIM] Buffer agent failed for {agent_id}: {e}", exc_info=True)
             return None
             
@@ -277,7 +271,7 @@ class EXAIM:
             
             # Flush returns deferred tail + current buffer content.
             agent_segments = self.buffer_agent.flush()
-            print(f"\033[1;35m[EXAIM _process_chunk] Trigger {trigger_id}: Flushed {len(agent_segments)} segments, starting background summarizer...\033[0m")
+
             logger.info(f"[EXAIM] Trigger {trigger_id}: Flushed {len(agent_segments)} segments, starting background summarizer...")
             
             summary_history_strs = self._get_limited_history(summaries[:-1])
@@ -294,7 +288,7 @@ class EXAIM:
             self.background_tasks.add(task)
             task.add_done_callback(self.background_tasks.discard)
             
-            print(f"\033[1;35m[EXAIM _process_chunk] Background summarization task started (trigger_id={trigger_id}), returning immediately\033[0m")
+
             logger.info(f"[EXAIM] Background summarization task started (trigger_id={trigger_id}), returning immediately")
             # Return immediately without waiting for summary
             return None
@@ -306,7 +300,6 @@ class EXAIM:
         if not remaining:
             return None
 
-        import logging
         logger = logging.getLogger(__name__)
         self.buffer_agent.park_tail([AgentSegment(agent_id=agent_id, segment=remaining)])
         logger.debug(

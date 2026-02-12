@@ -100,19 +100,19 @@ class TokenGate:
     
     def __init__(
         self,
-        min_words: int = 80,
-        max_words: int = 130,
-        silence_timer: float = 5.0,
-        max_wait_timeout: float = 12.0,
+        min_words: int = 60,
+        max_words: int = 100,
+        silence_timer: float = 1.0,
+        max_wait_timeout: float = 4.0,
         clock: Optional[Clock] = None
     ):
         """Initialize TokenGate with configurable flush triggers.
         
         Args:
-            min_words: Minimum word threshold (whitespace-delimited) before flushing (default: 80)
-            max_words: Maximum word cap (whitespace-delimited) to force flush (default: 130)
-            silence_timer: Seconds of inactivity before flush (default: 5.0)
-            max_wait_timeout: Maximum seconds before forced flush (default: 12.0)
+            min_words: Minimum word threshold (whitespace-delimited) before flushing (default: 60)
+            max_words: Maximum word cap (whitespace-delimited) to force flush (default: 100)
+            silence_timer: Seconds of inactivity before flush (default: 1.0)
+            max_wait_timeout: Maximum seconds before forced flush (default: 4.0)
             clock: Optional clock/time provider for deterministic timing. If None, uses real
                 wall-clock time. Use `ManualClock` for trace replay calibration.
         

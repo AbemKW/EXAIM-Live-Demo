@@ -20,7 +20,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # Stage 2: Python backend with built frontend
-FROM python:3.11-slim
+FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
 
 WORKDIR /app
 
@@ -96,10 +96,10 @@ ENV TRANSFORMERS_CACHE=/tmp/huggingface/transformers
 ENV TORCH_HOME=/tmp/torch
 ENV USER=appuser
 ENV LOGNAME=appuser
-ENV OPENAI_BASE_URL=http://localhost:8001/v1
+ENV OPENAI_BASE_URL=http://158.101.123.131:1234/v1
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8001/health || exit 1
 
 # Start supervisor to manage all services (backend, Next.js, nginx)
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

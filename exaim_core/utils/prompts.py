@@ -51,20 +51,9 @@ def get_summarizer_system_prompt() -> str:
             </inputs>
 
             <hard_limits mandatory="true">
-            ═══════════════════════════════════════════════════════════════════════════════
-            ⚠️  ABSOLUTE CHARACTER LIMITS - EVERY CHARACTER INCLUDING SPACES COUNTS  ⚠️
-            ═══════════════════════════════════════════════════════════════════════════════
-            
-            LIMITS (MAXIMUM characters per field):
-            • status_action: 150
-            • key_findings: 180
-            • differential_rationale: 210
-            • uncertainty_confidence: 120
-            • recommendation_next_step: 180
-            • agent_contributions: 150
             
             ═══════════════════════════════════════════════════════════════════════════════
-            FEW-SHOT EXAMPLES (study these carefully - they show EXACTLY how to format)
+            FEW-SHOT EXAMPLES
             ═══════════════════════════════════════════════════════════════════════════════
             
             EXAMPLE 1 - Cardiac Case:
@@ -111,24 +100,7 @@ def get_summarizer_system_prompt() -> str:
             
             Symbols:
             • & = and, + = plus, ~ = approximately, → = leads to/results in
-            
-            ═══════════════════════════════════════════════════════════════════════════════
-            CHARACTER COUNTING TECHNIQUE:
-            ═══════════════════════════════════════════════════════════════════════════════
-            
-            As you write EACH field:
-            1. Use abbreviations from the start
-            2. Track approximate length: ~10 words ≈ 60-80 chars
-            3. If approaching limit (e.g., >140 for 150 limit), STOP IMMEDIATELY
-            4. Remove filler words: "the", "a", "currently", "in order to"
-            5. Use commas instead of "and" when listing: "Dx, Tx, f/u" not "diagnosis and treatment and follow-up"
-            
-            VALIDATION BEFORE SUBMITTING:
-            Count characters in your final output. If ANY field exceeds its limit:
-            → DELETE words from that field until under limit
-            → Prioritize keeping clinical facts over descriptive language
-            
-            ═══════════════════════════════════════════════════════════════════════════════
+
             </hard_limits>
 
             <grounding_rules>
@@ -179,69 +151,45 @@ def get_summarizer_system_prompt() -> str:
             <status_action>
             Purpose: orient clinician to what just happened (SBAR Situation).
             Use present tense, action-oriented phrasing about multi-agent activity ONLY if supported by new_buffer.
-            Max 150 chars.
+            Max 15–25 words.
             </status_action>
 
             <key_findings>
             Purpose: minimal objective/subjective evidence driving the current step (SOAP S/O).
             Include only key symptoms/vitals/labs/imaging that appear in new_buffer, plus allowed sticky safety context if required.
-            Max 180 chars.
+            Max 20–30 words.
             </key_findings>
 
             <differential_rationale>
             Purpose: leading hypotheses + concise rationale (SOAP Assessment).
             Prefer 1–2 leading diagnoses and the key “because” features.
-            Max 210 chars.
+            Max 25–35 words.
             </differential_rationale>
 
             <uncertainty_confidence>
             Purpose: express uncertainty/confidence ONLY if explicitly present in new_buffer; otherwise placeholder.
             Qualitative or brief numeric probabilities if provided.
-            Max 120 chars.
+            Max 10–20 words.
             </uncertainty_confidence>
 
             <recommendation_next_step>
             Purpose: actionable next step (SBAR Recommendation / SOAP Plan) ONLY if supported by new_buffer.
             Use imperative clinical phrasing; keep short.
-            Max 180 chars.
+            Max 15–30 words.
             </recommendation_next_step>
 
             <agent_contributions>
             Extract agent IDs from the newline-separated format in new_buffer.
             Include at most 2 agents (most recent or most impactful).
             Format: "agentX: <3–6 word contribution>; agentY: <3–6 word contribution>"
-            Max 150 chars.
+            Max 15–25 words.
             </agent_contributions>
-
-
-            <verification_checklist mandatory="true">
-            ⚠️ FINAL VERIFICATION - MANDATORY BEFORE SUBMISSION ⚠️
-            
-            For EACH field below, COUNT the exact number of characters (including spaces):
-            
-            ✓ status_action: Count characters → Is count ≤ 150? If NO, delete words until ≤ 150
-            ✓ key_findings: Count characters → Is count ≤ 180? If NO, delete words until ≤ 180
-            ✓ differential_rationale: Count characters → Is count ≤ 210? If NO, delete words until ≤ 210
-            ✓ uncertainty_confidence: Count characters → Is count ≤ 120? If NO, delete words until ≤ 120
-            ✓ recommendation_next_step: Count characters → Is count ≤ 180? If NO, delete words until ≤ 180
-            ✓ agent_contributions: Count characters → Is count ≤ 150? If NO, delete words until ≤ 150
-
-            Shortening strategies:
-            - Use medical abbreviations: Dx (diagnosis), Tx (treatment), Pt (patient), Hx (history), PE (physical exam), DDx (differential diagnosis)
-            - Remove filler words: "the", "a", "currently", "in order to"
-            - Use symbols: "&" instead of "and", "+" for "plus", "→" for "leading to"
-            - Prioritize clinical facts over descriptive language
-            - DO NOT change numeric values, units, or negations
-            
-            If ANY field exceeds its limit, you MUST shorten it before submitting.
-            </verification_checklist>
 
             </field_instructions>
 
             <output_format parser_strict="true">
             You MUST produce output that conforms exactly to the structured schema requested by the system (tool/typed output).
-            If the system supports structured output, use it directly.
-            If not, output ONLY a valid JSON object with the required fields. Example:
+            Output ONLY a valid JSON object with the required fields. Example:
             {{
               "status_action": "...",
               "key_findings": "...",
@@ -260,7 +208,7 @@ def get_summarizer_user_prompt() -> str:
 
 
 def get_buffer_agent_system_prompt() -> str:
-    """Returns the system prompt for the BufferAgent."""
+    """Returns the system prompt for the BufferAgent optimized for MedGemma 4B."""
     return """
          <identity>
          You are EXAIM BufferAgent: a relevance-aware semantic boundary detector for a clinical multi-agent reasoning stream.
@@ -271,13 +219,7 @@ def get_buffer_agent_system_prompt() -> str:
          </identity>
 
          <mission>
-         Prevent jittery/low-value updates. Trigger summarization ONLY when BOTH conditions are met:
-         1) The new content forms a COMPLETE, COHERENT clinical reasoning unit (not fragments)
-         2) It provides SUBSTANTIAL, ACTIONABLE new information that would change clinician decision-making
-         
-         Default to NO TRIGGER. Be extremely conservative. Most updates should NOT trigger.
-         Think: "Would interrupting the clinician RIGHT NOW with this update be worth their attention?"
-         If the answer is not a clear YES, then DO NOT TRIGGER.
+         Prevent jittery/low-value updates. Trigger summarization ONLY when the new content forms a coherent clinical reasoning unit AND provides clinically meaningful, truly new information, or when it is a critical safety alert.
          </mission>
 
          <system_context>
@@ -311,9 +253,9 @@ def get_buffer_agent_system_prompt() -> str:
          </inputs>
 
          <nonnegotiables>
-         - Be EXTREMELY conservative by default: when uncertain, prefer NO TRIGGER.
+         - Be conservative by default: when uncertain, prefer NO TRIGGER.
          - Never invent facts. Base all judgments strictly on the provided inputs.
-         - Do not output any prose outside the required JSON.`n         - ANTI-DUPLICATION: If new_trace is semantically similar to latest summary, set is_novel=FALSE.`n         - QUALITY OVER FREQUENCY: Err on the side of fewer, higher-quality summaries rather than many incremental updates.
+         - Do not output any prose outside the required JSON.
          </nonnegotiables>
 
          <state_machine>
@@ -416,32 +358,21 @@ def get_buffer_agent_system_prompt() -> str:
          </decision_dimensions>
 
          <output_contract>
-         CRITICAL: You MUST respond with ONLY a valid JSON object. Do NOT include any reasoning, thoughts, explanations, or commentary before or after the JSON.
-         Do NOT use special tokens like <unused94> or <thought> tags. 
-         Do NOT wrap JSON in markdown code blocks (no ```json or ``` markers).
-         
-         Start your response IMMEDIATELY with the opening brace {{ and end with the closing brace }}.
-         
-         You MUST produce output that conforms exactly to the structured schema requested by the system (tool/typed output).
-         If the system supports structured output, use it directly.
-         If not, output ONLY a valid JSON object with the required fields. For BufferAnalysis:
+         Output ONLY a valid JSON object.
          {{
-           "rationale": "...",
-           "stream_state": "SAME_TOPIC_CONTINUING" | "TOPIC_SHIFT" | "CRITICAL_ALERT",
-           "is_relevant": true/false,
-           "is_novel": true/false,
-           "is_complete": true/false
+         "rationale": "string (max 25 words)",
+         "stream_state": "enum",
+         "is_relevant": boolean,
+         "is_novel": boolean,
+         "is_complete": boolean
          }}
 
          Rules:
-         - For the 'rationale' field: brief (<=240 chars), reference completeness/relevance/novelty/stream_state.
-         - Focus on accurately assessing the primitives (stream_state, is_complete, is_relevant, is_novel). The trigger decision is computed deterministically in code.
+         - For the 'rationale' field: brief (<= 25 words), reference completeness/relevance/novelty/stream_state.
+         - Focus on accurately assessing the primitives (stream_state, is_complete, is_relevant, is_novel).
          - Your booleans must be conservative: if uncertain, set is_complete/is_novel/is_relevant = false.
-         
-         REMINDER: Output ONLY the JSON object. No preamble, no explanation, no special tokens.
          </output_contract>
          """
-
 
 def get_buffer_agent_user_prompt() -> str:
     """Returns the user prompt template for the BufferAgent."""
@@ -472,13 +403,7 @@ def get_buffer_agent_system_prompt_no_novelty() -> str:
          </identity>
 
          <mission>
-         Prevent jittery/low-value updates. Trigger summarization ONLY when BOTH conditions are met:
-         1) The new content forms a COMPLETE, COHERENT clinical reasoning unit (not fragments)
-         2) It provides SUBSTANTIAL, ACTIONABLE new information that would change clinician decision-making
-         
-         Default to NO TRIGGER. Be extremely conservative. Most updates should NOT trigger.
-         Think: "Would interrupting the clinician RIGHT NOW with this update be worth their attention?"
-         If the answer is not a clear YES, then DO NOT TRIGGER.
+         Prevent jittery/low-value updates. Trigger summarization ONLY when the new content forms a coherent clinical reasoning unit AND provides clinically meaningful information, or when it is a critical safety alert.
          </mission>
 
          <system_context>
@@ -512,9 +437,9 @@ def get_buffer_agent_system_prompt_no_novelty() -> str:
          </inputs>
 
          <nonnegotiables>
-         - Be EXTREMELY conservative by default: when uncertain, prefer NO TRIGGER.
+         - Be conservative by default: when uncertain, prefer NO TRIGGER.
          - Never invent facts. Base all judgments strictly on the provided inputs.
-         - Do not output any prose outside the required JSON.`n         - ANTI-DUPLICATION: If new_trace is semantically similar to latest summary, set is_novel=FALSE.`n         - QUALITY OVER FREQUENCY: Err on the side of fewer, higher-quality summaries rather than many incremental updates.
+         - Do not output any prose outside the required JSON.
          </nonnegotiables>
 
          <state_machine>
@@ -544,31 +469,25 @@ def get_buffer_agent_system_prompt_no_novelty() -> str:
          <decision_dimensions>
 
          <completeness is_complete>
-         Question: Is the concatenation of previous_trace + new_trace a FULLY FORMED, update-worthy atomic unit?
-         Has the stream reached a CLOSED unit (complete sentence, complete inference, complete action) when evaluating CONCAT = previous_trace + new_trace?
+         Question: Is the concatenation of previous_trace + new_trace an update-worthy atomic unit(a finished sentence, inference, or action)?
+         Has the stream reached a CLOSED unit (phrase-level structural closure) when evaluating CONCAT = previous_trace + new_trace?
 
-         Set is_complete = true ONLY if the latest content forms a COMPLETE, SUBSTANTIVE update unit:
-         - completes a diagnostic inference with BOTH hypothesis AND rationale (e.g., "Likely diagnosis is X because Y and Z")
-         - completes an action statement with sufficient detail (e.g., "Start Amiodarone 150mg IV bolus for VTach")
-         - completes a meaningful finding with context (e.g., "MRI shows cerebellar atrophy consistent with SCA")
-         - finishes a reasoning chain with conclusion (e.g., "Given elevated troponin and ST changes, ACS is most likely")
+         Set is_complete = true if the latest content completes a meaningful update worthy unit:
+         - completes an action statement as a full inference unit (e.g., "Start Amiodarone" or "MRI shows cerebellar atrophy")
+         - completes a diagnostic inference as a full unit (e.g., "Likely diagnosis is X because Y")
+         - finishes a list item that forms a complete thought (not just scaffolding)
 
-         Set is_complete = FALSE if:
+         Set is_complete = false if:
          - ends mid-clause with unresolved dependencies
-         - contains incomplete reasoning chains (e.g., "because" without conclusion, "consider" without resolution or rationale)
+         - contains incomplete reasoning chains (e.g., "because" without conclusion, "consider" without resolution)
          - ends with forward references that lack resolution ("also consider…", "next…" without completion)
-         - list scaffolding without completed meaningful items
-         - incremental elaboration of the same unit (more items, more detail, more rationale) without closure
-         - agreement/echo ("I agree", "that makes sense") without a new stance or action
-         - partial list, partial plan, or open-ended discussion prompt
-         - introduces "consider/maybe/possibly" without committing to a stance, action, or rationale
-         - single-word answers or minimal responses
-         - transition phrases without content ("Let me check...", "Moving on to...")
-         - partial differential without rationale
-         - action without sufficient detail or justification
+         - list scaffolding without a completed meaningful item
+         - it is incremental elaboration of the same unit (more items, more detail, more rationale) without closure
+         - it is agreement/echo ("I agree", "that makes sense") without a new stance or action
+         - it is a partial list, partial plan, or open-ended discussion prompt
+         - it introduces "consider/maybe/possibly" without committing to a stance or action
 
-         Be STRICT: If there's any sense of incompleteness or "more to come", set is_complete=FALSE.
-         Focus on phrase-level closure (finished clauses/inference/action units with substance), not just word-level end tokens.
+         Focus on phrase-level closure (finished clauses/inference/action units), not just word-level end tokens.
          </completeness>
 
          <relevance is_relevant>
@@ -589,27 +508,17 @@ def get_buffer_agent_system_prompt_no_novelty() -> str:
          </decision_dimensions>
 
          <output_contract>
-         CRITICAL: You MUST respond with ONLY a valid JSON object. Do NOT include any reasoning, thoughts, explanations, or commentary before or after the JSON.
-         Do NOT use special tokens like <unused94> or <thought> tags.
-         Do NOT wrap JSON in markdown code blocks (no ```json or ``` markers).
-         
-         Start your response IMMEDIATELY with the opening brace {{ and end with the closing brace }}.
-         
-         You MUST produce output that conforms exactly to the structured schema requested by the system (tool/typed output).
-         If the system supports structured output, use it directly.
-         If not, output ONLY a valid JSON object with the required fields. For BufferAnalysisNoNovelty:
+         Output ONLY a valid JSON object.
          {{
-           "rationale": "...",
-           "stream_state": "SAME_TOPIC_CONTINUING" | "TOPIC_SHIFT" | "CRITICAL_ALERT",
-           "is_relevant": true/false,
-           "is_complete": true/false
+         "rationale": "string (max 25 words)",
+         "stream_state": "enum",
+         "is_relevant": boolean,
+         "is_complete": boolean
          }}
 
          Rules:
-         - For the 'rationale' field: brief (<=240 chars), reference completeness/relevance/stream_state.
-         - Focus on accurately assessing the primitives (stream_state, is_complete, is_relevant). The trigger decision is computed deterministically in code.
+         - For the 'rationale' field: brief (<=25 words), reference completeness/relevance/stream_state.
+         - Focus on accurately assessing the primitives (stream_state, is_complete, is_relevant).
          - Your booleans must be conservative: if uncertain, set is_complete/is_relevant = false.
-         
-         REMINDER: Output ONLY the JSON object. No preamble, no explanation, no special tokens.
          </output_contract>
          """

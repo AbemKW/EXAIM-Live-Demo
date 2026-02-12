@@ -183,21 +183,6 @@ class BufferAgent:
         buffer_context = self.format_segments_for_prompt(prior_segments)
         new_trace_block = self.format_segments_for_prompt([self.buffer[-1]])
         
-        # DEBUG: Print the input to the buffer agent
-        YELLOW = "\033[1;33m"  # Bright yellow
-        RESET = "\033[0m"      # Reset color
-        print(f"{YELLOW}DEBUG [{agent_id}] Buffer Agent Input:{RESET}")
-        print(f"{YELLOW}  Agent ID: {agent_id}{RESET}")
-        print(f"{YELLOW}  New Segment: {new_text}{RESET}")
-        print(f"{YELLOW}  Flush Reason: {flush_reason or 'none'}{RESET}")
-        print(f"{YELLOW}  Previous Summaries ({len(previous_summaries)}):{RESET}")
-        for i, summary in enumerate(previous_summaries):
-            print(f"{YELLOW}    [{i+1}] {summary}{RESET}")
-        print(f"{YELLOW}  Previous Trace Context:{RESET}")
-        print(f"{YELLOW}    {buffer_context}{RESET}")
-        print(f"{YELLOW}  New Trace Block:{RESET}")
-        print(f"{YELLOW}    {new_trace_block}{RESET}")
-        
         chain = self.flag_prompt | self.llm
         
         try:
