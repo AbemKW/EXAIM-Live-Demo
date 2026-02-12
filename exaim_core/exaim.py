@@ -11,7 +11,7 @@ from exaim_core.schema.agent_summary import AgentSummary
 class EXAIM:
     def __init__(self, history_k: int = 2):
         self.buffer_agent = BufferAgent()
-        self.summarizer_agent = SummarizerAgent()
+        self.summarizer_agent = SummarizerAgent(max_new_buffer_words=500)
         self.token_gate = TokenGate()
         self.summaries: list[AgentSummary] = []
         self.history_k = history_k
@@ -119,7 +119,7 @@ class EXAIM:
                     latest_summary_str,
                     self.history_k,
                 ),
-                timeout=120.0,
+                timeout=180.0,
             )
             
             if summary is not None:
