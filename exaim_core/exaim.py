@@ -9,9 +9,9 @@ from exaim_core.token_gate.token_gate import TokenGate
 from exaim_core.schema.agent_summary import AgentSummary
 
 class EXAIM:
-    def __init__(self, history_k: int = 2):
+    def __init__(self, history_k: int = 3):
         self.buffer_agent = BufferAgent()
-        self.summarizer_agent = SummarizerAgent(max_new_buffer_words=500)
+        self.summarizer_agent = SummarizerAgent()
         self.token_gate = TokenGate()
         self.summaries: list[AgentSummary] = []
         self.history_k = history_k

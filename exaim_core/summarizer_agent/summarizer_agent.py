@@ -14,10 +14,9 @@ from exaim_core.schema.agent_segment import AgentSegment
 from exaim_core.utils.json_utils import extract_json_from_text, extract_json_with_cot_fallback
 
 class SummarizerAgent:
-    def __init__(self, max_new_buffer_words: int = 500):
-        # Get LLM with role-specific generation parameters configured in registry
+    def __init__(self):
+
         self.base_llm = get_llm(LLMRole.SUMMARIZER)
-        self.max_new_buffer_words = max_new_buffer_words
         # Prepare the JSON schema for guided decoding (vLLM guided_json)
         try:
             self.guided_json_schema = AgentSummary.model_json_schema()
@@ -62,7 +61,7 @@ class SummarizerAgent:
     def _validate_and_truncate(self, summary: AgentSummary) -> AgentSummary:
         """Proactively validate and truncate summary fields to ensure limits.
         
-        Since 4b models cannot reliably count words, we ALWAYS validate
+        If models cannot reliably count words, we ALWAYS validate
         and truncate as needed before returning any summary.
         Preserves full text in full_* fields when truncation occurs.
         
@@ -310,7 +309,7 @@ class SummarizerAgent:
         return None
     
     @staticmethod
-    def format_segments_for_prompt(segments: List[AgentSegment], max_words: Optional[int] = None) -> str:
+    def format_segments_for_prompt(segments: List[AgentSegment]) -> str:
         if not segments:
             return "(Buffer empty)"
 
@@ -334,13 +333,6 @@ class SummarizerAgent:
 
         flush()
         full_buffer = "\n".join(lines)
-        
-        if max_words is not None:
-            words = full_buffer.split()
-            if len(words) > max_words:
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Truncating new_buffer from {len(words)} to {max_words} words.")
-                return " ".join(words[:max_words]) + " (...truncated)"
         
         return full_buffer
 
@@ -372,7 +364,7 @@ class SummarizerAgent:
         """
         summarize_chain = self.summarize_prompt | self.llm
 
-        new_buffer = self.format_segments_for_prompt(segments_with_agents, max_words=self.max_new_buffer_words)
+        new_buffer = self.format_segments_for_prompt(segments_with_agents)
 
         # Limit the history to prevent token limit issues
         limited_history = summary_history[-history_k:] if len(summary_history) > history_k else summary_history
