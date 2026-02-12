@@ -40,7 +40,7 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
     if provider == "openai":
         # Use config-provided base_url or fall back to env variable
         if base_url is None:
-            base_url = os.getenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
+            base_url = os.getenv("OPENAI_BASE_URL", "http://158.101.123.131:1234/v1")
 
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
 
