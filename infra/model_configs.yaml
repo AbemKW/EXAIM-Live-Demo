@@ -18,7 +18,6 @@ summarizer:
   provider: openai
   model: medgemma-27b-text-it
   streaming: true
-  base_url: http://158.101.123.131:1234/v1
   # Env overrides: SUMMARIZER_LLM_PROVIDER, SUMMARIZER_LLM_MODEL, SUMMARIZER_BASE_URL
 
 # Buffer Agent - Trace Trigger Decision
@@ -29,5 +28,4 @@ buffer_agent:
   provider: openai
   model: medgemma-27b-text-it
   streaming: true
-  base_url: http://158.101.123.131:1234/v1
   # Env overrides: BUFFER_AGENT_LLM_PROVIDER, BUFFER_AGENT_LLM_MODEL, BUFFER_AGENT_BASE_URL

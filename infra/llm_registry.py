@@ -34,13 +34,13 @@ def _load_default_configs():
 
 def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: bool = True, temperature: Optional[float] = None, role: str = "", base_url: Optional[str] = None):
     provider = provider.lower()
-    model_name = model or "google/medgemma-1.5-4b-it"
+    model_name = model or "medgemma-27b-text-it"
 
         # OpenAI provider now handles vLLM via OpenAI-compatible API
     if provider == "openai":
         # Use config-provided base_url or fall back to env variable
         if base_url is None:
-            base_url = os.getenv("OPENAI_BASE_URL", "http://158.101.123.131:1234/v1")
+            base_url = os.getenv("OPENAI_BASE_URL", "http://129.146.51.171:1234/v1")
 
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
 
