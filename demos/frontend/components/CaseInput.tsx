@@ -12,7 +12,7 @@ interface CaseInputProps {
 
 export default function CaseInput({ onError }: CaseInputProps) {
   const [caseText, setCaseText] = useState('');
-  const [mode, setMode] = useState<DemoMode>('live_demo');
+  const [mode, setMode] = useState<DemoMode>('trace_replay');
   const [traces, setTraces] = useState<TraceFile[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<string>('');
   const [loadingTraces, setLoadingTraces] = useState(false);
@@ -180,7 +180,7 @@ export default function CaseInput({ onError }: CaseInputProps) {
             disabled={isProcessing}
             className="flex-1"
           >
-            Live Demo
+            Custom
           </Button>
           <Button
             type="button"
