@@ -1,5 +1,5 @@
-import asyncio
-import logging
+import requests
+from infra.lambda_manager import provision_gpu
 import subprocess
 import sys
 import os
@@ -46,8 +46,45 @@ async def lifespan(app: FastAPI):
     # Startup: Start background message broadcaster
     broadcaster_task = asyncio.create_task(message_broadcaster())
     
-    # Model loading handled by vLLM server (started via supervisord)
-    # Backend waits for vLLM readiness via start_backend.sh probe
+    # GPU Provisioning
+    logger.info("Starting GPU provisioning...")
+    gpu_ip = provision_gpu()
+    if not gpu_ip:
+        logger.error("Failed to provision GPU. Exiting.")
+        sys.exit(1) # Exit if GPU provisioning fails
+    
+    # Readiness Handshake
+    lm_studio_url = f"http://{gpu_ip}:1234"
+    lm_studio_models_endpoint = f"{lm_studio_url}/v1/models"
+    
+    logger.info(f"GPU provisioned at {gpu_ip}. Starting model readiness check at {lm_studio_models_endpoint}...")
+    
+    model_ready = False
+    max_retries = 30 # ~5 minutes with 10 second sleep
+    for i in range(max_retries):
+        logger.info(f"Loading Model... Attempt {i+1}/{max_retries}")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(lm_studio_models_endpoint)
+                if response.status_code == 200:
+                    models_data = response.json()
+                    if any("medgemma" in model["id"] for model in models_data.get("data", [])):
+                        logger.info("Model 'medgemma' found in LM Studio. Ready for Inference.")
+                        os.environ["OPENAI_BASE_URL"] = f"{lm_studio_url}/v1"
+                        model_ready = True
+                        break
+                    else:
+                        logger.warning("LM Studio is up, but 'medgemma' model not yet loaded.")
+                else:
+                    logger.warning(f"LM Studio endpoint returned status {response.status_code}. Retrying...")
+        except httpx.RequestError as e:
+            logger.warning(f"LM Studio readiness check failed: {e}. Retrying...")
+        
+        await asyncio.sleep(10) # Wait 10 seconds before next poll
+    
+    if not model_ready:
+        logger.error("LM Studio model 'medgemma' did not become ready within the expected time. Exiting.")
+        sys.exit(1) # Exit if model not ready
     
     yield
     # Shutdown: Cancel background task
