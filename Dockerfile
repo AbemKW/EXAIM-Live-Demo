@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.4
 # Multi-stage Dockerfile for EXAIM with Next.js frontend and FastAPI backend
 # Optimized for Hugging Face Spaces deployment
 
@@ -48,9 +47,8 @@ RUN apt-get update && apt-get install -y \
 # Copy Python requirements (pinned)
 COPY requirements.pinned.txt .
 
-# Install Python dependencies with pip cache mount (BuildKit) and prefer wheels
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir --prefer-binary -r requirements.pinned.txt \
+# Install Python dependencies (avoid BuildKit-only features for CI compatibility)
+RUN pip install --no-cache-dir --prefer-binary -r requirements.pinned.txt \
     && pip install --no-cache-dir uvicorn[standard] fastapi websockets
 
 # Copy application code (EXAIM core logic and models)
