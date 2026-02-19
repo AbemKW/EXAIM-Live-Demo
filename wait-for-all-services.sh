@@ -1,6 +1,6 @@
 #!/bin/bash
 # wait-for-all-services.sh
-# Purpose: Wait for all upstream services (vLLM, Backend, Next.js) to be ready before starting nginx
+# Purpose: Wait for all upstream services (Backend, Next.js) to be ready before starting nginx
 # This ensures users cannot access the frontend before the full system is operational
 
 set -e
@@ -39,7 +39,7 @@ check_service() {
 
 
 
-# Check Backend API (with vLLM connectivity verification)
+# Check Backend API
 if ! check_service "Backend" "http://localhost:8001/health"; then
     echo ""
     echo "FATAL: Backend server is not available. Cannot start nginx."

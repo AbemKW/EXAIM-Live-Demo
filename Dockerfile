@@ -48,7 +48,7 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir uvicorn[standard] fastapi websockets
+        && pip install --no-cache-dir uvicorn[standard] fastapi websockets
 
 # Copy application code (EXAIM core logic and models)
 COPY exaim_core ./exaim_core
@@ -69,7 +69,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Copy startup script for backend (waits for vLLM to be ready)
+# Copy startup script for backend
 COPY start_backend.sh /app/start_backend.sh
 RUN chmod +x /app/start_backend.sh
 

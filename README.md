@@ -121,7 +121,7 @@ Since Kaggle does not support Docker, use the following Python-native workflow t
 !pip install -r evals/requirements-evals.txt
 !pip install -r requirements.txt
 !pip install --no-deps https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz
-!pip install vllm
+<!-- vllm removed from this project's default workflow -->
 ```
 
 **2. Download Knowledge Base**
@@ -140,40 +140,15 @@ os.makedirs(linker_path, exist_ok=True)
 !curl -L -o {linker_path}/concept_aliases.json https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/data/linkers/2020-10-09/umls/concept_aliases.json
 ```
 
-**3. Serve MedGemma Locally**
+**3. Run Evaluation**
 
-Instead of calling external APIs, we spin up a local vLLM server to host `google/medgemma-27b-it` using 4-bit quantization (fitting on Kaggle T4 GPUs).
-
-```python
-# Launch vLLM in background
-# Ensure you have accepted the model terms on HF and added your HF_TOKEN as a secret
-# Note: This process takes ~5-10 minutes to load weights
-!vllm serve google/medgemma-27b-it --quantization bitsandbytes --dtype half --port 8000 &
-```
-
-**4. Run Evaluation**
-
-Configure the `llm_registry` to point to the local server via the OpenAI compatibility layer:
+Configure the `llm_registry` to point to your preferred LLM provider (OpenAI/Vertex AI/other) via environment variables. Example:
 
 ```python
 import os
-import time
-import requests
-
-# Wait for server to be ready
-print("Waiting for vLLM server...")
-for i in range(20):
-    try:
-        requests.get("http://localhost:8000/v1/models")
-        print("Server is ready!")
-        break
-    except:
-        time.sleep(10)
-
-# Configure environment to use local vLLM
 os.environ["SUMMARIZER_LLM_PROVIDER"] = "openai"
-os.environ["OPENAI_BASE_URL"] = "http://localhost:8000/v1"
-os.environ["OPENAI_API_KEY"] = "EMPTY"
+# Set your LLM endpoint in `OPENAI_BASE_URL` if using a local or compatible server
+os.environ["OPENAI_API_KEY"] = "<YOUR_API_KEY>"
 
 # Set paths for the evaluator
 os.environ["PYTHONPATH"] = "/kaggle/working/ExAID:/kaggle/working/ExAID/third_party/mac"
