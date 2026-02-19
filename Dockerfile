@@ -43,12 +43,11 @@ RUN apt-get update && apt-get install -y \
     supervisor \
     curl \
     && rm -rf /var/lib/apt/lists/*
+# Copy Python requirements
+COPY requirements.txt .
 
-# Copy Python requirements (pinned)
-COPY requirements.pinned.txt .
-
-# Install Python dependencies (avoid BuildKit-only features for CI compatibility)
-RUN pip install --no-cache-dir --prefer-binary -r requirements.pinned.txt \
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir uvicorn[standard] fastapi websockets
 
 # Copy application code (EXAIM core logic and models)
