@@ -38,8 +38,12 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Trace replay engine not available - trace_replay mode disabled")
 
-from exaim_core.exaim import EXAIM
-from infra.lambda_manager import LambdaLifecycleManager
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,6 +52,9 @@ async def lifespan(app: FastAPI):
     broadcaster_task = asyncio.create_task(message_broadcaster())
     
     # GPU Provisioning via LambdaLifecycleManager
+    print("=========================================")
+    print("STARTING GPU PROVISIONING (Lambda Labs)")
+    print("=========================================")
     logger.info("Initializing GPU provisioning...")
     lambda_mgr = LambdaLifecycleManager()
     
@@ -66,10 +73,12 @@ async def lifespan(app: FastAPI):
     lm_studio_url = f"http://{gpu_ip}:1234"
     lm_studio_models_endpoint = f"{lm_studio_url}/v1/models"
     
+    print(f"GPU PROVISIONED AT {gpu_ip}")
+    print(f"Waiting for MedGemma model to load in LM Studio at {lm_studio_url}...")
     logger.info(f"GPU provisioned at {gpu_ip}. Starting model readiness check at {lm_studio_models_endpoint}...")
     
     model_ready = False
-    max_retries = 60 # ~10 minutes with 10 second sleep
+    max_retries = 120 # ~20 minutes with 10 second sleep
     for i in range(max_retries):
         logger.info(f"Checking Model Readiness... Attempt {i+1}/{max_retries}")
         try:
@@ -79,6 +88,7 @@ async def lifespan(app: FastAPI):
                     models_data = response.json()
                     # Check if MedGemma model is listed in the models array
                     if any("medgemma" in model.get("id", "").lower() for model in models_data.get("data", [])):
+                        print("✓ MedGemma model is READY!")
                         logger.info("Model 'medgemma' found in LM Studio. Ready for inference.")
                         # Inject the verified IP into the environment for LLM Registry
                         os.environ["OPENAI_BASE_URL"] = f"{lm_studio_url}/v1"
@@ -94,9 +104,13 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(10) # Wait before next poll
     
     if not model_ready:
+        print("✗ ERROR: MedGemma model failed to become ready.")
         logger.error("LM Studio model 'medgemma' did not become ready within the expected time. Exiting.")
         sys.exit(1)
     
+    print("=========================================")
+    print("BACKEND STARTUP COMPLETE - SERVING REQUESTS")
+    print("=========================================")
     yield
     # Shutdown: Cancel background task
     broadcaster_task.cancel()
@@ -104,10 +118,6 @@ async def lifespan(app: FastAPI):
         await broadcaster_task
     except asyncio.CancelledError:
         pass  # Expected during shutdown
-
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 # Health check cache
 _health_cache = {

@@ -9,7 +9,7 @@ echo "====================================="
 echo "Waiting for all services to be ready..."
 echo "====================================="
 
-MAX_ATTEMPTS=30
+MAX_ATTEMPTS=180
 SLEEP_INTERVAL=5
 TIMEOUT=$((MAX_ATTEMPTS * SLEEP_INTERVAL))
 
