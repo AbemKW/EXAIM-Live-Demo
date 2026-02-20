@@ -32,7 +32,7 @@ class LambdaLifecycleManager:
             logger.warning("LAMBDA_API_KEY not found in environment or constructor.")
         self.headers = {"Authorization": f"Bearer {self.api_key}"}
 
-    async def get_existing_instance(self, instance_type: str = "gpu_1x_a100") -> Optional[Dict]:
+    async def get_existing_instance(self, instance_type: str = "gpu_1x_a100_sxm4") -> Optional[Dict]:
         """Find an existing instance of the specified type (active or booting).
         
         Returns:
@@ -59,7 +59,7 @@ class LambdaLifecycleManager:
 
     async def provision_gpu(
         self,
-        instance_type: str = "gpu_1x_a100",
+        instance_type: str = "gpu_1x_a100_sxm4",
         region: str = "us-west-1",
         on_stage: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> Optional[ProvisionResult]:

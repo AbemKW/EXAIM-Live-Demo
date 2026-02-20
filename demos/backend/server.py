@@ -117,7 +117,7 @@ async def _provisioning_background_task():
         )
 
         result = await lambda_mgr.provision_gpu(
-            instance_type="gpu_1x_a100",
+            instance_type="gpu_1x_a100_sxm4",
             region="us-west-1",
             on_stage=on_stage,
         )
