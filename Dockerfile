@@ -69,13 +69,11 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Copy startup script for backend
-COPY start_backend.sh /app/start_backend.sh
-RUN chmod +x /app/start_backend.sh
+# Copy startup script for backend (preserve executable bit)
+COPY --chmod=0755 start_backend.sh /app/start_backend.sh
 
 # Copy startup barrier script for nginx (waits for all services to be ready)
-COPY wait-for-all-services.sh /app/wait-for-all-services.sh
-RUN chmod +x /app/wait-for-all-services.sh
+COPY --chmod=0755 wait-for-all-services.sh /app/wait-for-all-services.sh
 
 # Create writable directories for non-root user
 RUN mkdir -p /tmp/nginx /var/lib/nginx /var/log/nginx \
