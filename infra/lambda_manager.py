@@ -32,7 +32,7 @@ class LambdaLifecycleManager:
             logger.warning("LAMBDA_API_KEY not found in environment or constructor.")
         self.headers = {"Authorization": f"Bearer {self.api_key}"}
 
-    async def get_existing_instance(self, instance_type: str = "gpu_1x_a10") -> Optional[Dict]:
+    async def get_existing_instance(self, instance_type: str = "gpu_1x_a100") -> Optional[Dict]:
         """Find an existing instance of the specified type (active or booting).
         
         Returns:
@@ -59,7 +59,7 @@ class LambdaLifecycleManager:
 
     async def provision_gpu(
         self,
-        instance_type: str = "gpu_1x_a10",
+        instance_type: str = "gpu_1x_a100",
         region: str = "us-west-1",
         on_stage: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> Optional[ProvisionResult]:
@@ -252,14 +252,14 @@ runcmd:
   # Install and start LM Studio CLI (lms)
   - curl -fsSL https://lmstudio.ai/install.sh | bash
   - export PATH="$PATH:$HOME/.cache/lm-studio/bin" # Ensure lms is in path
+  - source ~/.bashrc
   - lms daemon up &
   - sleep 10
 
   # Start LM Studio server and load model
-  - lms server start --port 1234 --bind 0.0.0.0 &
-  - sleep 5
+  - lms server start --port 1234 --bind 0.0.0.0
   - lms get medgemma-27b-text-it-GGUF@q4_k_m -y
-  - lms load lmstudio-community/medgemma-27b-text-it-GGUF -c 16384
+  - lms load medgemma-27b-text-it -c 16384
 
   # GPU status server on port 9999 - backend polls this for idle detection and termination
   # No API key or credentials - backend handles termination via Lambda API
