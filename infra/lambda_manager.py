@@ -185,7 +185,7 @@ runcmd:
     TERMINATE_URL = "https://cloud.lambdalabs.com/api/v1/instance-operations/terminate"
 
     def get_my_instance_id():
-        """Finds our own instance ID by matching our public IP with the API list."""
+        '''Finds our own instance ID by matching our public IP with the API list.'''
         try:
             # Try to get public IP
             ip = requests.get("https://api.ipify.org", timeout=10).text.strip()
@@ -201,15 +201,14 @@ runcmd:
         return None
 
     def check_gpu_idle():
-        """Returns True if GPU utilization is 0%."""
+        '''Returns True if GPU utilization is 0%.'''
         try:
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
                 capture_output=True, text=True, check=True
             )
             # Check if all GPUs are idle
-            utilizations = [int(u.strip()) for u in result.stdout.strip().split('
-') if u.strip()]
+            utilizations = [int(u.strip()) for u in result.stdout.strip().split('\\n') if u.strip()]
             return all(u == 0 for u in utilizations)
         except Exception as e:
             print(f"Error checking GPU utilization: {{e}}")
