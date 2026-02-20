@@ -1,4 +1,3 @@
-
 import os
 import httpx
 import asyncio
@@ -20,11 +19,11 @@ class LambdaLifecycleManager:
             logger.warning("LAMBDA_API_KEY not found in environment or constructor.")
         self.headers = {"Authorization": f"Bearer {self.api_key}"}
 
-    async def get_active_instance(self, instance_type: str = "gpu_1x_a10") -> Optional[Dict]:
-        """Find an existing active instance of the specified type.
+    async def get_existing_instance(self, instance_type: str = "gpu_1x_a10") -> Optional[Dict]:
+        """Find an existing instance of the specified type (active or booting).
         
         Returns:
-            Dict containing instance details (including ip_address) if found, else None.
+            Dict containing instance details if found, else None.
         """
         if not self.api_key:
             return None
@@ -35,11 +34,10 @@ class LambdaLifecycleManager:
                 response.raise_for_status()
                 instances = response.json().get("data", [])
                 
+                # Check for instances that are either active or booting
                 for inst in instances:
-                    # Check for active status and matching instance type
-                    if (inst.get("status") == "active" and 
-                        inst.get("instance_type", {}).get("name") == instance_type and 
-                        inst.get("ip_address")):
+                    if (inst.get("status") in ["active", "booting"] and 
+                        inst.get("instance_type", {}).get("name") == instance_type):
                         return inst
         except Exception as e:
             logger.error(f"Error listing instances from Lambda API: {e}")
@@ -60,81 +58,98 @@ class LambdaLifecycleManager:
             logger.error("Cannot provision GPU: LAMBDA_API_KEY is missing.")
             return None
             
-        # 1. Detection: Find existing active instance
-        instance = await self.get_active_instance(instance_type)
+        # 1. Detection: Find existing active or booting instance
+        instance = await self.get_existing_instance(instance_type)
+        instance_id = None
+        
         if instance:
-            ip = instance.get("ip_address")
-            logger.info(f"Using existing active instance: {instance['id']} at {ip}")
-            return ip
-
-        # 2. Launch Logic: Launch new instance if none exists
-        logger.info(f"No active instance found. Launching new '{instance_type}' in '{region}'...")
-        
-        # Get user data with embedded auto-termination
-        user_data = self._get_user_data_script()
-        
-        # Get an SSH key (required for launch)
-        ssh_key_name = await self._get_first_ssh_key()
-        if not ssh_key_name:
-            logger.error("No SSH keys found in Lambda Labs account. Launch will fail.")
-            return None
+            instance_id = instance.get("id")
+            if instance.get("status") == "active" and instance.get("ip_address"):
+                ip = instance.get("ip_address")
+                logger.info(f"Using existing active instance: {instance_id} at {ip}")
+                return ip
+            else:
+                logger.info(f"Found existing instance {instance_id} with status '{instance.get('status')}'. Waiting for it to become active...")
+        else:
+            # 2. Launch Logic: Launch new instance if none exists
+            logger.info(f"No active or booting instance found. Launching new '{instance_type}' in '{region}'...")
             
-        payload = {
-            "region_name": region,
-            "instance_type_name": instance_type,
-            "ssh_key_names": [ssh_key_name],
-            "file_system_names": [],
-            "name": f"exaim-gpu-{instance_type.replace('_', '-')}",
-            "user_data": user_data
-        }
-        
-        try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                response = await client.post(
-                    f"{self.base_url}/instance-operations/launch",
-                    json=payload,
-                    headers=self.headers
-                )
-                response.raise_for_status()
-                launch_data = response.json().get("data", [])
-                if not launch_data:
-                     logger.error("Launch response did not contain instance data.")
-                     return None
-                     
-                instance_ids = launch_data  # Sometimes it's a list of IDs directly
-                if isinstance(launch_data, list) and len(launch_data) > 0:
-                    # Depending on API version, it might be [{"id": ...}] or [id, id]
-                    instance_id = launch_data[0]
-                    if isinstance(instance_id, dict):
-                        instance_id = instance_id.get("id")
-                else:
-                    logger.error(f"Unexpected launch response format: {launch_data}")
-                    return None
-                    
-                logger.info(f"Instance '{instance_id}' launch initiated. Waiting for active status...")
-                
-                # 3. Wait for IP and active status
-                max_attempts = 120 # 20 minutes with 10s polling
-                for attempt in range(max_attempts):
-                    await asyncio.sleep(10)
-                    try:
-                        resp = await client.get(f"{self.base_url}/instances/{instance_id}", headers=self.headers)
-                        if resp.status_code == 200:
-                            inst_data = resp.json().get("data", {})
-                            if inst_data.get("status") == "active" and inst_data.get("ip_address"):
-                                logger.info(f"Instance '{instance_id}' is now active at {inst_data['ip_address']}")
-                                return inst_data["ip_address"]
-                        else:
-                            logger.warning(f"Failed to poll instance status (Attempt {attempt+1}): {resp.status_code}")
-                    except Exception as e:
-                        logger.warning(f"Error polling instance status: {e}")
-                        
-                logger.error(f"Instance '{instance_id}' did not become active within the timeout period.")
+            # Get user data with embedded auto-termination
+            user_data = self._get_user_data_script()
+            
+            # Get an SSH key (required for launch)
+            ssh_key_name = await self._get_first_ssh_key()
+            if not ssh_key_name:
+                logger.error("No SSH keys found in Lambda Labs account. Launch will fail.")
                 return None
                 
-        except Exception as e:
-            logger.error(f"Error during instance launch: {e}")
+            payload = {
+                "region_name": region,
+                "instance_type_name": instance_type,
+                "ssh_key_names": [ssh_key_name],
+                "file_system_names": [],
+                "name": f"exaim-gpu-{instance_type.replace('_', '-')}",
+                "user_data": user_data
+            }
+            
+            try:
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    response = await client.post(
+                        f"{self.base_url}/instance-operations/launch",
+                        json=payload,
+                        headers=self.headers
+                    )
+                    response.raise_for_status()
+                    response_json = response.json()
+                    
+                    # Handle both "data" (list of objects) and "instance_ids" (list of strings) formats
+                    launch_data = response_json.get("data", [])
+                    if not launch_data and "instance_ids" in response_json:
+                        launch_data = response_json["instance_ids"]
+                        
+                    if not launch_data:
+                         logger.error(f"Launch response did not contain instance data: {response_json}")
+                         return None
+                         
+                    # The first item in launch_data is our new instance
+                    first_item = launch_data[0]
+                    if isinstance(first_item, dict):
+                        instance_id = first_item.get("id")
+                    else:
+                        instance_id = first_item # It's a string ID
+                        
+                    logger.info(f"Instance '{instance_id}' launch initiated.")
+            except Exception as e:
+                logger.error(f"Error during instance launch: {e}")
+                return None
+
+        # 3. Wait for IP and active status
+        if not instance_id:
             return None
+            
+        logger.info(f"Waiting for instance '{instance_id}' to become active...")
+        max_attempts = 120 # 20 minutes with 10s polling
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for attempt in range(max_attempts):
+                try:
+                    resp = await client.get(f"{self.base_url}/instances/{instance_id}", headers=self.headers)
+                    if resp.status_code == 200:
+                        inst_data = resp.json().get("data", {})
+                        if inst_data.get("status") == "active" and inst_data.get("ip_address"):
+                            logger.info(f"Instance '{instance_id}' is now active at {inst_data['ip_address']}")
+                            return inst_data["ip_address"]
+                        elif inst_data.get("status") == "terminated":
+                            logger.error(f"Instance '{instance_id}' was terminated unexpectedly.")
+                            return None
+                    else:
+                        logger.warning(f"Failed to poll instance status (Attempt {attempt+1}): {resp.status_code}")
+                except Exception as e:
+                    logger.warning(f"Error polling instance status: {e}")
+                
+                await asyncio.sleep(10)
+                        
+        logger.error(f"Instance '{instance_id}' did not become active within the timeout period.")
+        return None
 
     async def _get_first_ssh_key(self) -> Optional[str]:
         """Fetch available SSH keys and return the first one's name."""
@@ -151,8 +166,6 @@ class LambdaLifecycleManager:
 
     def _get_user_data_script(self) -> str:
         """Generates the cloud-init user_data script for instance provisioning."""
-        # Note: Embedded API key allows the instance to terminate itself.
-        # Secure the instance and API key as appropriate for your production environment.
         return f"""#cloud-config
 runcmd:
   - apt-get update
