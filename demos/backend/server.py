@@ -39,146 +39,7 @@ except ImportError:
     logger.warning("Trace replay engine not available - trace_replay mode disabled")
 
 from exaim_core.exaim import EXAIM
-
-LAMBDA_API_BASE_URL = "https://cloud.lambdalabs.com/api/v1"
-USER_DATA_SCRIPT = """#cloud-config
-runcmd:
-  - apt-get update
-  - apt-get install -y curl python3-pip
-  - pip install lms lmctl requests
-
-  # Install and start LM Studio
-  - curl -L https://install.lmstudio.ai | bash
-  - lms daemon up &
-  - sleep 10 # Give LMS daemon time to start
-  - lms get lmstudio-community/medgemma-27b-text-it-GGUF:q4km # Explicitly download the model
-  - lms load lmstudio-community/medgemma-27b-text-it-GGUF:q4km --context-length 16384 # Load the model with 16k context length
-  - lms server start --model lmstudio-community/medgemma-27b-text-it-GGUF:q4km --port 1234 &
-
-  # Background Python script to monitor GPU idle time and self-terminate
-  - |
-    #!/usr/bin/env python3
-    import time
-    import subprocess
-    import os
-    import requests
-
-    IDLE_TIMEOUT_SECONDS = 3 * 3600 # 3 hours
-    POLL_INTERVAL_SECONDS = 60 # Check every minute
-    LAMBDA_API_KEY = os.environ.get("LAMBDA_API_KEY")
-    INSTANCE_ID = os.environ.get("LAMBDA_INSTANCE_ID") # Set by Lambda Labs during provisioning
-
-    if not LAMBDA_API_KEY or not INSTANCE_ID:
-        print("LAMBDA_API_KEY or LAMBDA_INSTANCE_ID not set. Skipping self-termination script.")
-        exit(1)
-
-    idle_start_time = None
-
-    while True:
-        try:
-            # Check GPU utilization using nvidia-smi
-            result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, check=True
-            )
-            gpu_utilization = [int(x.strip()) for x in result.stdout.strip().split('\\n')]
-
-            is_idle = all(util == 0 for util in gpu_utilization)
-
-            if is_idle:
-                if idle_start_time is None:
-                    idle_start_time = time.time()
-                    print(f"GPU is idle. Starting idle timer: {IDLE_TIMEOUT_SECONDS / 3600} hours.")
-                elif (time.time() - idle_start_time) >= IDLE_TIMEOUT_SECONDS:
-                    print(f"GPU has been idle for {IDLE_TIMEOUT_SECONDS / 3600} hours. Terminating instance...")
-                    headers = {"Authorization": f"Bearer {LAMBDA_API_KEY}"}
-                    response = requests.delete(f"{LAMBDA_API_BASE_URL}/instance/{INSTANCE_ID}", headers=headers)
-                    response.raise_for_status()
-                    print("Instance terminated successfully.")
-                    break # Exit loop after termination
-            else:
-                if idle_start_time is not None:
-                    print("GPU activity detected. Resetting idle timer.")
-                idle_start_time = None
-
-        except Exception as e:
-            print(f"Error monitoring GPU: {e}")
-
-        time.sleep(POLL_INTERVAL_SECONDS)
-"""
-
-def provision_gpu_direct_api(
-    instance_type_name: str = "gpu_1x_a10",
-    region_name: str = "us-west-1", # Example region
-) -> Optional[str]:
-    """
-    Provisions a GPU instance using Lambda Labs Direct API, or returns the IP of an existing active instance.
-    The instance will set up LM Studio and load the medgemma model.
-    It will also include a self-termination script if idle for 3 hours.
-
-    Returns:
-        The IP address of the active GPU instance, or None if provisioning fails.
-    """
-    api_key = os.environ.get("LAMBDA_API_KEY")
-    if not api_key:
-        logger.error("LAMBDA_API_KEY environment variable not set.")
-        return None
-
-    headers = {"Authorization": f"Bearer {api_key}"}
-
-    logger.info("Checking for existing active GPU instances...")
-    try:
-        response = requests.get(f"{LAMBDA_API_BASE_URL}/instances", headers=headers)
-        response.raise_for_status() # Raise an exception for HTTP errors
-        instances_data = response.json()["data"]
-
-        for instance in instances_data:
-            if instance["status"] == "active" and \
-               instance["instance_type"]["name"] == instance_type_name and \
-               instance["ip_address"]:
-                logger.info(f"Found existing active instance: {instance['id']} at IP: {instance['ip_address']}")
-                return instance["ip_address"]
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error listing instances: {e}")
-        return None
-
-    logger.info(f"No active instance found. Launching a new '{instance_type_name}' instance...")
-    try:
-        launch_payload = {
-            "instance_type_name": instance_type_name,
-            "region_name": region_name,
-            "ssh_key_names": ["your-ssh-key"], # IMPORTANT: Replace with your actual SSH key name
-            "file_system_names": [],
-            "name": "exaim-gpu-instance",
-            "user_data": USER_DATA_SCRIPT,
-        }
-        response = requests.post(f"{LAMBDA_API_BASE_URL}/instance-operations/launch", json=launch_payload, headers=headers)
-        response.raise_for_status()
-        new_instance_id = response.json()["data"][0]["id"]
-        logger.info(f"Instance '{new_instance_id}' launched successfully.")
-
-        # Wait for the instance to become active and get its IP
-        max_attempts = 60
-        for attempt in range(max_attempts):
-            time.sleep(10) # Wait 10 seconds before polling again
-            response = requests.get(f"{LAMBDA_API_BASE_URL}/instances/{new_instance_id}", headers=headers)
-            response.raise_for_status()
-            instance = response.json()["data"]
-            if instance["status"] == "active" and instance["ip_address"]:
-                logger.info(f"Instance '{instance['id']}' is active with IP: {instance['ip_address']}")
-                return instance["ip_address"]
-            logger.info(f"Waiting for instance '{instance['id']}' to become active... (Attempt {attempt + 1}/{max_attempts})")
-
-        logger.error(f"Instance '{new_instance_id}' did not become active within the expected time.")
-        return None
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error launching or monitoring instance: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        return None
-
+from infra.lambda_manager import LambdaLifecycleManager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -186,45 +47,55 @@ async def lifespan(app: FastAPI):
     # Startup: Start background message broadcaster
     broadcaster_task = asyncio.create_task(message_broadcaster())
     
-    # GPU Provisioning
-    logger.info("Starting GPU provisioning...")
-    gpu_ip = provision_gpu_direct_api()
-    if not gpu_ip:
-        logger.error("Failed to provision GPU. Exiting.")
-        sys.exit(1) # Exit if GPU provisioning fails
+    # GPU Provisioning via LambdaLifecycleManager
+    logger.info("Initializing GPU provisioning...")
+    lambda_mgr = LambdaLifecycleManager()
     
-    # Readiness Handshake
+    # Attempt to provision a GPU instance (Discovery -> Launch -> Active IP)
+    # This is now async and robust.
+    gpu_ip = await lambda_mgr.provision_gpu(
+        instance_type="gpu_1x_a10", 
+        region="us-west-1"
+    )
+    
+    if not gpu_ip:
+        logger.error("Failed to provision GPU after multiple attempts. Exiting.")
+        sys.exit(1)
+    
+    # Readiness Handshake for LM Studio
     lm_studio_url = f"http://{gpu_ip}:1234"
     lm_studio_models_endpoint = f"{lm_studio_url}/v1/models"
     
     logger.info(f"GPU provisioned at {gpu_ip}. Starting model readiness check at {lm_studio_models_endpoint}...")
     
     model_ready = False
-    max_retries = 30 # ~5 minutes with 10 second sleep
+    max_retries = 60 # ~10 minutes with 10 second sleep
     for i in range(max_retries):
-        logger.info(f"Loading Model... Attempt {i+1}/{max_retries}")
+        logger.info(f"Checking Model Readiness... Attempt {i+1}/{max_retries}")
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(lm_studio_models_endpoint)
                 if response.status_code == 200:
                     models_data = response.json()
-                    if any("medgemma" in model["id"] for model in models_data.get("data", [])):
-                        logger.info("Model 'medgemma' found in LM Studio. Ready for Inference.")
+                    # Check if MedGemma model is listed in the models array
+                    if any("medgemma" in model.get("id", "").lower() for model in models_data.get("data", [])):
+                        logger.info("Model 'medgemma' found in LM Studio. Ready for inference.")
+                        # Inject the verified IP into the environment for LLM Registry
                         os.environ["OPENAI_BASE_URL"] = f"{lm_studio_url}/v1"
                         model_ready = True
                         break
                     else:
-                        logger.warning("LM Studio is up, but 'medgemma' model not yet loaded.")
+                        logger.warning("LM Studio is up, but 'medgemma' model not yet loaded in data array.")
                 else:
                     logger.warning(f"LM Studio endpoint returned status {response.status_code}. Retrying...")
         except httpx.RequestError as e:
-            logger.warning(f"LM Studio readiness check failed: {e}. Retrying...")
+            logger.warning(f"LM Studio readiness check failed (not reachable yet): {e}")
         
-        await asyncio.sleep(10) # Wait 10 seconds before next poll
+        await asyncio.sleep(10) # Wait before next poll
     
     if not model_ready:
         logger.error("LM Studio model 'medgemma' did not become ready within the expected time. Exiting.")
-        sys.exit(1) # Exit if model not ready
+        sys.exit(1)
     
     yield
     # Shutdown: Cancel background task
@@ -232,7 +103,7 @@ async def lifespan(app: FastAPI):
     try:
         await broadcaster_task
     except asyncio.CancelledError:
-        pass  # Expected during shutdown - task was cancelled gracefully
+        pass  # Expected during shutdown
 
 
 # Configure logging
@@ -697,22 +568,25 @@ async def message_broadcaster():
     while True:
         try:
             # Wait for at least one message
-            message = message_queue.get()
-            await broadcast_message(message)
-            message_queue.task_done()
+            message = await message_queue.get()
+            try:
+                await broadcast_message(message)
+            finally:
+                message_queue.task_done()
             
             # Process any additional messages immediately without waiting
             # This prevents batching and ensures smooth streaming
             while not message_queue.empty():
                 try:
                     message = message_queue.get_nowait()
-                    await broadcast_message(message)
-                    message_queue.task_done()
+                    try:
+                        await broadcast_message(message)
+                    finally:
+                        message_queue.task_done()
                 except asyncio.QueueEmpty:
                     break
                 except Exception as e:
                     logger.error(f"Error processing queued message: {e}")
-                    message_queue.task_done()
                     
         except asyncio.CancelledError:
             break

@@ -36,27 +36,29 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
     provider = provider.lower()
     model_name = model or "medgemma-27b-text-it"
 
-        # OpenAI provider now handles vLLM via OpenAI-compatible API
+    # OpenAI provider handles vLLM or LM Studio via OpenAI-compatible API
     if provider == "openai":
-        # Use config-provided base_url or fall back to env variable
-        if base_url is None:
-            base_url = os.getenv("OPENAI_BASE_URL", "http://129.146.51.171:1234/v1")
+        # Prioritize OPENAI_BASE_URL from environment for dynamic GPU routing
+        # This ensures we use the Lambda instance IP provisioned during startup
+        env_base_url = os.getenv("OPENAI_BASE_URL")
+        if env_base_url:
+            base_url = env_base_url
+        elif base_url is None:
+            # Fallback to local default if no environment variable or config is set
+            base_url = "http://localhost:1234/v1"
 
         api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
 
-        # Model-specific kwargs for vLLM extra_body parameters. Keep this empty by default
-        # so callers can pass per-invoke `extra_body` (e.g. guided_json) when needed.
+        # Model-specific kwargs for extra_body parameters
         model_kwargs = {}
         if role == LLMRole.SUMMARIZER:
             model_kwargs = {"max_tokens": 2048}
-            # Default behavior: deterministic, constrained sampling for summarization.
-            # Per-call `extra_body` (for vLLM guided_json) is supported and should be
-            # provided by the caller/agent when applicable.
             return ChatOpenAI(
                 model=model_name,
                 base_url=base_url,
                 api_key=api_key,
                 model_kwargs=model_kwargs,
+                streaming=streaming
             )
         
         if role == LLMRole.BUFFER_AGENT:
@@ -66,6 +68,7 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
                 base_url=base_url,
                 api_key=api_key,
                 model_kwargs=model_kwargs,
+                streaming=streaming
             )
 
         return ChatOpenAI(
@@ -74,6 +77,7 @@ def _create_llm_instance(provider: str, model: Optional[str] = None, streaming: 
             api_key=api_key,
             temperature=temperature if temperature is not None else 0.0,
             model_kwargs=model_kwargs,
+            streaming=streaming
         )
     
     if provider == "google":
