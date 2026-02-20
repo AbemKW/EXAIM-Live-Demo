@@ -48,79 +48,192 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Provisioning state - updated by background task; read by /api/provisioning-status, /health, /api/process-case
+_provisioning_state: Dict = {
+    "status": "provisioning",  # provisioning | waiting_for_model | ready | failed
+    "stage": "discovering",     # discovering | launching | waiting_for_active | loading_model | null
+    "message": "Initializing...",
+    "instance_id": None,
+    "gpu_ip": None,
+    "error": None,
+}
+_provisioning_lock = asyncio.Lock()
+_gpu_instance_id: Optional[str] = None
+_gpu_ip: Optional[str] = None
+_lambda_mgr: Optional[LambdaLifecycleManager] = None
+_idle_termination_task: Optional[asyncio.Task] = None
+_provisioning_task: Optional[asyncio.Task] = None
+IDLE_TIMEOUT_SECONDS = 3 * 3600  # 3 hours
+
+
+def _update_provisioning_state(**kwargs):
+    """Update provisioning state (thread-safe for dict updates)."""
+    for k, v in kwargs.items():
+        if k in _provisioning_state:
+            _provisioning_state[k] = v
+
+
+async def _idle_termination_loop(gpu_ip: str, instance_id: str):
+    """Background task: poll GPU idle; terminate after 3h idle."""
+    idle_start_time = None
+    while True:
+        try:
+            if await _lambda_mgr.check_gpu_idle(gpu_ip):
+                if idle_start_time is None:
+                    idle_start_time = time.time()
+                elif (time.time() - idle_start_time) >= IDLE_TIMEOUT_SECONDS:
+                    logger.info(f"GPU idle for {IDLE_TIMEOUT_SECONDS}s. Terminating instance {instance_id}...")
+                    await _lambda_mgr.terminate_instance(instance_id)
+                    return
+            else:
+                idle_start_time = None
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.warning(f"Idle termination check failed: {e}")
+            idle_start_time = None
+        await asyncio.sleep(60)
+
+
+async def _provisioning_background_task():
+    """Background task for GPU provisioning. Updates _provisioning_state."""
+    global _gpu_instance_id, _gpu_ip, _lambda_mgr, _idle_termination_task
+    lambda_mgr = LambdaLifecycleManager()
+    _lambda_mgr = lambda_mgr
+
+    instance_id = None
+    gpu_ip = None
+    launched_by_us = False
+    model_ready = False
+
+    try:
+        async def on_stage(stage: str, message: str):
+            _update_provisioning_state(stage=stage, message=message)
+
+        _update_provisioning_state(
+            status="provisioning",
+            stage="discovering",
+            message="Checking for existing Lambda GPU instances...",
+        )
+
+        result = await lambda_mgr.provision_gpu(
+            instance_type="gpu_1x_a10",
+            region="us-west-1",
+            on_stage=on_stage,
+        )
+        if not result:
+            _update_provisioning_state(
+                status="failed",
+                stage=None,
+                message="Failed to provision GPU.",
+                error="Provisioning failed after multiple attempts.",
+            )
+            return
+
+        gpu_ip = result.ip
+        instance_id = result.instance_id
+        launched_by_us = result.launched_by_us
+        _gpu_instance_id = instance_id
+        _gpu_ip = gpu_ip
+
+        _update_provisioning_state(
+            stage="loading_model",
+            message=f"GPU at {gpu_ip}. Waiting for MedGemma model to load in LM Studio...",
+            instance_id=instance_id,
+            gpu_ip=gpu_ip,
+        )
+
+        lm_studio_url = f"http://{gpu_ip}:1234"
+        lm_studio_models_endpoint = f"{lm_studio_url}/v1/models"
+        max_retries = 240  # ~20 minutes with 5s sleep
+        for i in range(max_retries):
+            _update_provisioning_state(message=f"Checking model readiness... Attempt {i+1}/{max_retries}")
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(lm_studio_models_endpoint)
+                    if response.status_code == 200:
+                        models_data = response.json()
+                        if any("medgemma" in model.get("id", "").lower() for model in models_data.get("data", [])):
+                            model_ready = True
+                            break
+            except httpx.RequestError:
+                pass
+            await asyncio.sleep(5)
+
+        if not model_ready:
+            _update_provisioning_state(
+                status="failed",
+                stage=None,
+                message="MedGemma model did not become ready.",
+                error="Model load timeout.",
+            )
+            if launched_by_us and instance_id:
+                await lambda_mgr.terminate_instance(instance_id)
+            return
+
+        os.environ["OPENAI_BASE_URL"] = f"{lm_studio_url}/v1"
+        _update_provisioning_state(
+            status="ready",
+            stage=None,
+            message="Backend ready. GPU provisioned and model loaded.",
+        )
+
+        # Start idle-termination background task
+        _idle_termination_task = asyncio.create_task(_idle_termination_loop(gpu_ip, instance_id))
+
+    except Exception as e:
+        logger.exception("Provisioning failed")
+        _update_provisioning_state(
+            status="failed",
+            stage=None,
+            message="Provisioning failed.",
+            error=str(e),
+        )
+        if launched_by_us and instance_id:
+            try:
+                await lambda_mgr.terminate_instance(instance_id)
+            except Exception:
+                pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown events."""
-    # Startup: Start background message broadcaster
+    global _idle_termination_task, _provisioning_task
     broadcaster_task = asyncio.create_task(message_broadcaster())
-    
-    # GPU Provisioning via LambdaLifecycleManager
+    _provisioning_task = asyncio.create_task(_provisioning_background_task())
+
     print("=========================================")
     print("STARTING GPU PROVISIONING (Lambda Labs)")
     print("=========================================")
-    logger.info("Initializing GPU provisioning...")
-    lambda_mgr = LambdaLifecycleManager()
-    
-    # Attempt to provision a GPU instance (Discovery -> Launch -> Active IP)
-    # This is now async and robust.
-    gpu_ip = await lambda_mgr.provision_gpu(
-        instance_type="gpu_1x_a10", 
-        region="us-west-1"
-    )
-    
-    if not gpu_ip:
-        logger.error("Failed to provision GPU after multiple attempts. Exiting.")
-        sys.exit(1)
-    
-    # Readiness Handshake for LM Studio
-    lm_studio_url = f"http://{gpu_ip}:1234"
-    lm_studio_models_endpoint = f"{lm_studio_url}/v1/models"
-    
-    print(f"GPU PROVISIONED AT {gpu_ip}")
-    print(f"Waiting for MedGemma model to load in LM Studio at {lm_studio_url}...")
-    logger.info(f"GPU provisioned at {gpu_ip}. Starting model readiness check at {lm_studio_models_endpoint}...")
-    
-    model_ready = False
-    max_retries = 120 # ~20 minutes with 10 second sleep
-    for i in range(max_retries):
-        logger.info(f"Checking Model Readiness... Attempt {i+1}/{max_retries}")
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(lm_studio_models_endpoint)
-                if response.status_code == 200:
-                    models_data = response.json()
-                    # Check if MedGemma model is listed in the models array
-                    if any("medgemma" in model.get("id", "").lower() for model in models_data.get("data", [])):
-                        print("✓ MedGemma model is READY!")
-                        logger.info("Model 'medgemma' found in LM Studio. Ready for inference.")
-                        # Inject the verified IP into the environment for LLM Registry
-                        os.environ["OPENAI_BASE_URL"] = f"{lm_studio_url}/v1"
-                        model_ready = True
-                        break
-                    else:
-                        logger.warning("LM Studio is up, but 'medgemma' model not yet loaded in data array.")
-                else:
-                    logger.warning(f"LM Studio endpoint returned status {response.status_code}. Retrying...")
-        except httpx.RequestError as e:
-            logger.warning(f"LM Studio readiness check failed (not reachable yet): {e}")
-        
-        await asyncio.sleep(10) # Wait before next poll
-    
-    if not model_ready:
-        print("✗ ERROR: MedGemma model failed to become ready.")
-        logger.error("LM Studio model 'medgemma' did not become ready within the expected time. Exiting.")
-        sys.exit(1)
-    
-    print("=========================================")
-    print("BACKEND STARTUP COMPLETE - SERVING REQUESTS")
-    print("=========================================")
+    logger.info("Server starting. Provisioning runs in background. Poll /api/provisioning-status for progress.")
+
     yield
-    # Shutdown: Cancel background task
+
+    # Shutdown: cancel provisioning task first (may be polling model readiness)
+    if _provisioning_task and not _provisioning_task.done():
+        _provisioning_task.cancel()
+        try:
+            await _provisioning_task
+        except asyncio.CancelledError:
+            pass
+
+    if _idle_termination_task and not _idle_termination_task.done():
+        _idle_termination_task.cancel()
+        try:
+            await _idle_termination_task
+        except asyncio.CancelledError:
+            pass
+
+    if _gpu_instance_id and _lambda_mgr:
+        logger.info(f"Shutdown: terminating Lambda instance {_gpu_instance_id}")
+        await _lambda_mgr.terminate_instance(_gpu_instance_id)
+
     broadcaster_task.cancel()
     try:
         await broadcaster_task
     except asyncio.CancelledError:
-        pass  # Expected during shutdown
+        pass
 
 # Health check cache
 _health_cache = {
@@ -188,6 +301,17 @@ async def health_check():
     Response is cached for 10 seconds to reduce load on vLLM.
     """
     global _health_cache
+
+    # Return 503 if provisioning not yet complete
+    if _provisioning_state["status"] != "ready":
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": _provisioning_state["status"],
+                "vllm": "provisioning",
+                "cached": False,
+            }
+        )
     
     current_time = time.time()
     
@@ -210,7 +334,7 @@ async def health_check():
             )
     
     # Check vLLM availability
-    vllm_url = os.environ.get("OPENAI_BASE_URL", "http://158.101.123.131:1234/v1")
+    vllm_url = os.environ.get("OPENAI_BASE_URL", "http://localhost:1234/v1")
     models_endpoint = f"{vllm_url}/models"
     
     try:
@@ -261,6 +385,23 @@ async def health_check():
                 "cached": False
             }
         )
+
+
+@app.get("/api/provisioning-status")
+async def provisioning_status():
+    """Return current GPU provisioning state.
+    
+    Status: provisioning | waiting_for_model | ready | failed
+    Stage: discovering | launching | waiting_for_active | loading_model | null
+    """
+    return {
+        "status": _provisioning_state["status"],
+        "stage": _provisioning_state["stage"],
+        "message": _provisioning_state["message"],
+        "instance_id": _provisioning_state["instance_id"],
+        "gpu_ip": _provisioning_state["gpu_ip"],
+        "error": _provisioning_state["error"],
+    }
 
 
 # Global CDSS instance for the current request.
@@ -808,20 +949,30 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/api/process-case")
 async def process_case(request: CaseRequest):
     """Process a clinical case through the CDSS system or replay a trace file.
-    
+
     Routes to either:
     - Live Demo mode: CDSS graph execution (existing functionality)
     - Trace Replay mode: Replay frozen trace file
-    
+
     A new CDSS instance is created for each request. The cdss_lock ensures that only
     one request can process at a time, preventing race conditions with the global
     cdss_instance and its callbacks. Requests will be queued and processed sequentially.
-    
+
     Input validation (empty check, length limit) is handled by Pydantic validator
     and will return 422 Unprocessable Entity for invalid input.
     """
     global cdss_instance, cdss_process_task, should_stop, cancellation_event
-    
+
+    if _provisioning_state["status"] != "ready":
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "unavailable",
+                "message": "GPU provisioning not complete. Poll /api/provisioning-status for progress.",
+                "provisioning_status": _provisioning_state["status"],
+            },
+        )
+
     # Acquire lock to ensure only one request processes at a time
     async with cdss_lock:
         try:

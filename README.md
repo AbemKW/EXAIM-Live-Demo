@@ -58,6 +58,7 @@ EXAIM includes a **live interactive web demo** featuring a real-time Clinical De
 **Prerequisites:**
 - Node.js 18+
 - Python 3.10+
+- `LAMBDA_API_KEY` (for Lambda Cloud GPU provisioning) — set in `.env` or environment
 
 **Quick Start (Windows):**
 ```powershell
@@ -100,6 +101,10 @@ npm run dev
 Then open [http://localhost:3000](http://localhost:3000) in your browser.
 
 For detailed demo documentation, see [demos/frontend/README.md](demos/frontend/README.md).
+
+**GPU Provisioning (Lambda Cloud):** The backend dynamically provisions a Lambda Labs GPU instance on startup. Poll `GET /api/provisioning-status` for progress. Using a [pre-baked Lambda image](https://docs.lambdalabs.com/public-cloud/on-demand/#alternative-images) with LM Studio and MedGemma pre-installed can reduce startup from ~20 min to ~5 min.
+
+**Cost optimization:** Lambda Cloud does not offer spot instances; only on-demand. For lower costs, consider reserved capacity or alternative providers.
 
 ## Kaggle & Notebook Execution
 
