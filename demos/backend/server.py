@@ -38,6 +38,9 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Trace replay engine not available - trace_replay mode disabled")
 
+from exaim_core.exaim import EXAIM
+from infra.lambda_manager import LambdaLifecycleManager
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
