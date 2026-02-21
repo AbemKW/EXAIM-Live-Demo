@@ -118,13 +118,13 @@ async def remove_connection(websocket: WebSocket):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint that verifies vLLM availability.
+    """Health check endpoint that verifies LLM provider availability.
     
     Returns:
-        200 OK if backend and vLLM are both healthy
-        503 Service Unavailable if vLLM is not available
+        200 OK if backend and configured LLM provider are both healthy
+        503 Service Unavailable if LLM provider is not available
     
-    Response is cached for 10 seconds to reduce load on vLLM.
+    Response is cached for 10 seconds to reduce load on providers.
     """
     global _health_cache
     
@@ -135,7 +135,7 @@ async def health_check():
         if _health_cache["status"] == "healthy":
             return {
                 "status": _health_cache["status"],
-                "vllm": _health_cache["vllm"],
+                "llm_provider": _health_cache.get("llm_provider", "unknown"),
                 "cached": True
             }
         else:
@@ -143,63 +143,85 @@ async def health_check():
                 status_code=503,
                 detail={
                     "status": _health_cache["status"],
-                    "vllm": _health_cache["vllm"],
+                    "llm_provider": _health_cache.get("llm_provider", "unknown"),
                     "cached": True
                 }
             )
     
-    # Check vLLM availability
-    vllm_url = os.environ.get("OPENAI_BASE_URL", "http://158.101.123.131:1234/v1")
-    models_endpoint = f"{vllm_url}/models"
+    # Load model configuration to determine which provider to check
+    from infra.llm_registry import _load_default_configs
+    configs = _load_default_configs()
     
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(models_endpoint)
+    # Check the provider for the summarizer (representative of the system's LLM health)
+    summarizer_config = configs.get("summarizer", {"provider": "openai"})
+    provider = summarizer_config.get("provider", "openai").lower()
+    
+    if provider == "google":
+        # For Google, check if API key is present
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if api_key:
+            _health_cache = {
+                "status": "healthy",
+                "llm_provider": "google",
+                "ready": True,
+                "timestamp": current_time
+            }
+            return _health_cache
+        else:
+            _health_cache = {
+                "status": "unhealthy",
+                "llm_provider": "google",
+                "ready": False,
+                "error": "GOOGLE_API_KEY not found",
+                "timestamp": current_time
+            }
+            raise HTTPException(status_code=503, detail=_health_cache)
             
-            if response.status_code == 200:
-                # vLLM is healthy
-                _health_cache = {
-                    "status": "healthy",
-                    "vllm": "ready",
-                    "timestamp": current_time
-                }
-                return {
-                    "status": "healthy",
-                    "vllm": "ready",
-                    "cached": False
-                }
-            else:
-                # vLLM returned non-200 status
-                _health_cache = {
-                    "status": "unhealthy",
-                    "vllm": "unavailable",
-                    "timestamp": current_time
-                }
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "status": "unhealthy",
-                        "vllm": "unavailable",
-                        "cached": False
+    elif provider == "openai":
+        # Check vLLM availability for OpenAI-compatible provider
+        vllm_url = os.environ.get("OPENAI_BASE_URL", "http://158.101.123.131:1234/v1")
+        models_endpoint = f"{vllm_url}/models"
+        
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(models_endpoint)
+                
+                if response.status_code == 200:
+                    _health_cache = {
+                        "status": "healthy",
+                        "llm_provider": "openai/vllm",
+                        "ready": True,
+                        "timestamp": current_time
                     }
-                )
-    except Exception as e:
-        # vLLM connection failed
-        logger.warning(f"vLLM health check failed: {e}")
+                    return _health_cache
+                else:
+                    _health_cache = {
+                        "status": "unhealthy",
+                        "llm_provider": "openai/vllm",
+                        "ready": False,
+                        "timestamp": current_time
+                    }
+                    raise HTTPException(status_code=503, detail=_health_cache)
+        except Exception as e:
+            logger.warning(f"vLLM health check failed: {e}")
+            _health_cache = {
+                "status": "unhealthy",
+                "llm_provider": "openai/vllm",
+                "ready": False,
+                "error": str(e),
+                "timestamp": current_time
+            }
+            raise HTTPException(status_code=503, detail=_health_cache)
+    
+    else:
+        # For other providers (like groq), just assume healthy if configured
         _health_cache = {
-            "status": "unhealthy",
-            "vllm": "unavailable",
+            "status": "healthy",
+            "llm_provider": provider,
+            "ready": True,
             "timestamp": current_time
         }
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "status": "unhealthy",
-                "vllm": "unavailable",
-                "error": str(e),
-                "cached": False
-            }
-        )
+        return _health_cache
 
 
 # Global CDSS instance for the current request.
