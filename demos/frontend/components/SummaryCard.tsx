@@ -3,13 +3,15 @@
 import React, { forwardRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useCDSSStore } from '@/store/cdssStore';
-import type { Summary } from '@/lib/types';
+import type { Summary, SummaryData } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useTheme } from '@/hooks/useTheme';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import DiffGlowText from './DiffGlowText';
 
 interface SummaryCardProps {
   summary: Summary;
+  previousSummary?: Summary | null;
   showComparison?: boolean;
   mode?: 'spotlight' | 'list';
   onClick?: () => void;
@@ -17,6 +19,7 @@ interface SummaryCardProps {
 
 const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({ 
   summary, 
+  previousSummary = null,
   showComparison = false, 
   mode = 'list',
   onClick 
@@ -52,49 +55,61 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
   const fields = [
     { 
       label: 'Status / Action', 
-      key: 'status_action',
+      key: 'status_action' as keyof SummaryData,
       value: summary.data.status_action,
       fullValue: summary.data.full_status_action,
+      prevValue: previousSummary?.data.status_action,
+      prevFullValue: previousSummary?.data.full_status_action,
       color: 'var(--summary-status-action)',
       bgColor: `oklch(0.50 0.08 260 / ${bgOpacity})`,
     },
     { 
       label: 'Key Findings', 
-      key: 'key_findings',
+      key: 'key_findings' as keyof SummaryData,
       value: summary.data.key_findings,
       fullValue: summary.data.full_key_findings,
+      prevValue: previousSummary?.data.key_findings,
+      prevFullValue: previousSummary?.data.full_key_findings,
       color: 'var(--summary-key-findings)',
       bgColor: `oklch(0.55 0.08 150 / ${bgOpacity})`,
     },
     { 
       label: 'Differential & Rationale', 
-      key: 'differential_rationale',
+      key: 'differential_rationale' as keyof SummaryData,
       value: summary.data.differential_rationale,
       fullValue: summary.data.full_differential_rationale,
+      prevValue: previousSummary?.data.differential_rationale,
+      prevFullValue: previousSummary?.data.full_differential_rationale,
       color: 'var(--summary-differential)',
       bgColor: `oklch(0.50 0.08 300 / ${bgOpacity})`,
     },
     { 
       label: 'Uncertainty / Confidence', 
-      key: 'uncertainty_confidence',
+      key: 'uncertainty_confidence' as keyof SummaryData,
       value: summary.data.uncertainty_confidence,
       fullValue: summary.data.full_uncertainty_confidence,
+      prevValue: previousSummary?.data.uncertainty_confidence,
+      prevFullValue: previousSummary?.data.full_uncertainty_confidence,
       color: 'var(--summary-uncertainty)',
       bgColor: `oklch(0.58 0.08 60 / ${bgOpacity})`,
     },
     { 
       label: 'Recommendation / Next Step', 
-      key: 'recommendation_next_step',
+      key: 'recommendation_next_step' as keyof SummaryData,
       value: summary.data.recommendation_next_step,
       fullValue: summary.data.full_recommendation_next_step,
+      prevValue: previousSummary?.data.recommendation_next_step,
+      prevFullValue: previousSummary?.data.full_recommendation_next_step,
       color: 'var(--summary-recommendation)',
       bgColor: `oklch(0.50 0.08 180 / ${bgOpacity})`,
     },
     { 
       label: 'Agent Contributions', 
-      key: 'agent_contributions',
+      key: 'agent_contributions' as keyof SummaryData,
       value: summary.data.agent_contributions,
       fullValue: summary.data.full_agent_contributions,
+      prevValue: previousSummary?.data.agent_contributions,
+      prevFullValue: previousSummary?.data.full_agent_contributions,
       color: 'var(--summary-contributions)',
       bgColor: `oklch(0.50 0.03 0 / ${bgOpacity})`,
     },
@@ -106,11 +121,8 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
       <motion.div
         ref={ref}
         layout
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ duration: 0.3 }}
         data-summary-id={summary.id}
+        className="h-full"
       >
         <Card className="overflow-hidden transition-all duration-300 border-border/50 bg-card/80 dark:bg-teal-950/30 backdrop-blur-xl shadow-2xl glass-card spotlight-glow h-full flex flex-col">
           {/* Header */}
@@ -131,7 +143,8 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
               {fields.map((field, index) => {
                 const isExpanded = expandedFields.has(field.key);
                 const hasFull = field.fullValue != null && field.fullValue.trim() !== '';
-                const displayValue = (isExpanded && hasFull) ? field.fullValue : field.value;
+                const displayValue = (isExpanded && hasFull) ? (field.fullValue || '') : field.value;
+                const prevDisplayValue = (isExpanded && field.prevFullValue) ? (field.prevFullValue || '') : (field.prevValue || '');
                 
                 return (
                   <div 
@@ -173,7 +186,11 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
                       )}
                     </div>
                     <div className="text-xs text-foreground leading-relaxed font-medium break-words" style={{ fontWeight: 500 }}>
-                      {displayValue}
+                      <DiffGlowText 
+                        oldText={prevDisplayValue} 
+                        newText={displayValue} 
+                        glowDuration={3}
+                      />
                     </div>
                   </div>
                 );
@@ -236,4 +253,3 @@ SummaryCard.displayName = 'SummaryCard';
 
 // Memoize to prevent unnecessary re-renders
 export default React.memo(SummaryCard);
-

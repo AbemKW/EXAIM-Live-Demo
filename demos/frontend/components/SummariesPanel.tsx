@@ -42,6 +42,17 @@ export default function SummariesPanel() {
     // If no expanded summary, use the first one (newest, since they're added at the beginning)
     return summaries.length > 0 ? summaries[0] : null;
   }, [summaries]);
+
+  // Find the previous summary to show diffs against
+  const previousSummary = React.useMemo(() => {
+    if (!spotlightSummary) return null;
+    const index = summaries.findIndex(s => s.id === spotlightSummary.id);
+    // The previous summary is the one added just before the current one (at index+1)
+    if (index !== -1 && index + 1 < summaries.length) {
+      return summaries[index + 1];
+    }
+    return null;
+  }, [summaries, spotlightSummary]);
   
   // Stable click handler to prevent issues during re-renders
   const handleComparisonToggle = useCallback(() => {
@@ -113,8 +124,9 @@ export default function SummariesPanel() {
             </div>
             <div className="flex-1 overflow-hidden min-h-0">
               <SummaryCard
-                key={spotlightSummary.id}
+                key="spotlight-summary-card"
                 summary={spotlightSummary}
+                previousSummary={previousSummary}
                 showComparison={comparisonMode}
                 mode="spotlight"
               />
