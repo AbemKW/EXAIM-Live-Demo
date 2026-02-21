@@ -12,7 +12,7 @@ interface CaseInputProps {
 
 export default function CaseInput({ onError }: CaseInputProps) {
   const [caseText, setCaseText] = useState('');
-  const [mode, setMode] = useState<DemoMode>('live_demo');
+  const [mode, setMode] = useState<DemoMode>('trace_replay');
   const [traces, setTraces] = useState<TraceFile[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<string>('');
   const [loadingTraces, setLoadingTraces] = useState(false);
@@ -172,6 +172,15 @@ export default function CaseInput({ onError }: CaseInputProps) {
         <div className="flex gap-2">
           <Button
             type="button"
+            variant={mode === 'trace_replay' ? 'default' : 'outline'}
+            onClick={() => setMode('trace_replay')}
+            disabled={isProcessing}
+            className="flex-1"
+          >
+            Trace Replay
+          </Button>
+          <Button
+            type="button"
             variant={mode === 'live_demo' ? 'default' : 'outline'}
             onClick={() => {
               setMode('live_demo');
@@ -180,16 +189,7 @@ export default function CaseInput({ onError }: CaseInputProps) {
             disabled={isProcessing}
             className="flex-1"
           >
-            Live Demo
-          </Button>
-          <Button
-            type="button"
-            variant={mode === 'trace_replay' ? 'default' : 'outline'}
-            onClick={() => setMode('trace_replay')}
-            disabled={isProcessing}
-            className="flex-1"
-          >
-            Trace Replay
+            Custom
           </Button>
         </div>
       </div>
