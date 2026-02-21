@@ -67,62 +67,63 @@ export default function SummariesPanel() {
   }, [summaries, spotlightSummary]);
 
   return (
-    <Card className="flex flex-col overflow-hidden h-full bg-card/30 backdrop-blur-xl border-border/50 dark:border-white/10 glass-card">
+    <Card className="flex flex-col overflow-hidden h-full bg-card/10 backdrop-blur-xl border-border/40 dark:border-white/5 glass-card">
       {/* Panel Header */}
-      <CardHeader className="bg-gradient-to-r from-muted/60 to-muted/40 dark:from-zinc-950/40 dark:to-zinc-900/30 backdrop-blur-md border-b border-border/50 dark:border-white/10 py-3 px-5 glass-header">
+      <CardHeader className="bg-gradient-to-r from-muted/40 to-muted/20 dark:from-zinc-950/20 dark:to-zinc-900/10 backdrop-blur-md border-b border-border/40 dark:border-white/5 py-2 px-4 flex-shrink-0 glass-header">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-xl font-bold text-foreground">EXAIM Summaries</CardTitle>
+          <CardTitle className="text-lg font-bold text-foreground">EXAIM Summaries</CardTitle>
           <div className="flex items-center gap-2">
             <Button
               variant={comparisonMode ? 'default' : 'outline'}
               size="sm"
               onClick={handleComparisonToggle}
-              className="text-xs"
+              className="text-[10px] h-7 px-2"
             >
               {comparisonMode 
                 ? compressionInfo !== null
-                  ? `✓ Comparison (${compressionInfo.percentage}% ${compressionInfo.label})`
-                  : '✓ Comparison'
+                  ? `✓ ${compressionInfo.percentage}% ${compressionInfo.label}`
+                  : '✓ Comp'
                 : 'Comparison'}
             </Button>
-            <Badge variant="secondary" className="text-sm">
-              {summaries.length} summar{summaries.length !== 1 ? 'ies' : 'y'}
+            <Badge variant="secondary" className="text-[10px] px-1.5 h-5">
+              {summaries.length}
             </Badge>
           </div>
         </div>
       </CardHeader>
 
       {/* Panel Content - Only Spotlight Summary */}
-      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Subtle background pattern to fill space */}
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none dark:invert" style={{ backgroundImage: 'radial-gradient(#000 0.5px, transparent 0.5px)', backgroundSize: '10px 10px' }}></div>
+        
         {!spotlightSummary ? (
-          <CardContent className="flex-1 flex items-center justify-center px-4 py-8">
-            <p className="text-muted-foreground text-center text-base">
-              No summaries yet. Summaries will appear here as EXAIM processes agent traces.
+          <CardContent className="flex-1 flex items-center justify-center px-4 py-8 relative z-10">
+            <p className="text-muted-foreground text-center text-sm italic">
+              Awaiting agent traces to generate summaries...
             </p>
           </CardContent>
         ) : (
-          <div className="flex-1 flex flex-col overflow-hidden px-3 pt-1 pb-1">
+          <div className="flex-1 flex flex-col overflow-hidden px-2 pt-2 pb-2 relative z-10">
             {comparisonMode && (
-              <>
+              <div className="mb-2 space-y-1">
                 <WordCountComparison
                   totalWords={totalWords}
                   summaryWords={totalSummaryWords}
                 />
-                <div className="mb-1 flex-shrink-0">
-                  <CompressionStats
-                    totalWords={totalWords}
-                    summaryWords={totalSummaryWords}
-                  />
-                </div>
-              </>
+                <CompressionStats
+                  totalWords={totalWords}
+                  summaryWords={totalSummaryWords}
+                />
+              </div>
             )}
-            <div className="mb-0.5 flex-shrink-0">
-              <div className="text-xs font-semibold text-teal-400 uppercase tracking-wider flex items-center gap-2">
-                <span className="inline-block w-2 h-2 bg-teal-400 rounded-full animate-pulse"></span>
-                Latest Summary
+            <div className="mb-1.5 flex-shrink-0 flex items-center justify-between">
+              <div className="text-[10px] font-bold text-teal-500/80 uppercase tracking-widest flex items-center gap-1.5 ml-1">
+                <span className="inline-block w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse"></span>
+                Spotlight
               </div>
             </div>
-            <div className="flex-1 overflow-hidden min-h-0">
+            <div className="flex-1 overflow-hidden min-h-0 flex flex-col items-center justify-start">
               <SummaryCard
                 key="spotlight-summary-card"
                 summary={spotlightSummary}

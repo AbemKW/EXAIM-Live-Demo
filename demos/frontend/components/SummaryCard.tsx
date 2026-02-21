@@ -122,9 +122,9 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
         ref={ref}
         layout
         data-summary-id={summary.id}
-        className="h-full"
+        className="max-h-full"
       >
-        <Card className="overflow-hidden transition-all duration-300 border-border/50 bg-card/80 dark:bg-teal-950/30 backdrop-blur-xl shadow-2xl glass-card spotlight-glow h-full flex flex-col">
+        <Card className="overflow-hidden transition-all duration-300 border-border/50 bg-card/80 dark:bg-teal-950/30 backdrop-blur-xl shadow-2xl glass-card spotlight-glow flex flex-col max-h-full">
           {/* Header */}
           <CardHeader className="py-1.5 px-2 border-b border-border/30 dark:border-white/10 flex-shrink-0">
             <div className="flex justify-between items-center">
@@ -138,8 +138,8 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
           </CardHeader>
 
           {/* Full Content - Always Visible */}
-          <CardContent className="pt-0.5 pb-1 px-2 flex-1 overflow-hidden">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-1 items-start h-full">
+          <CardContent className="pt-1 pb-2 px-2 flex-1 overflow-y-auto custom-scrollbar">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
               {fields.map((field, index) => {
                 const isExpanded = expandedFields.has(field.key);
                 const hasFull = field.fullValue != null && field.fullValue.trim() !== '';
@@ -149,20 +149,19 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
                 return (
                   <div 
                     key={index} 
-                    className="summary-field-group rounded-lg p-1 transition-all backdrop-blur-md border border-border/50 dark:border-white/10 hover:border-border dark:hover:border-white/20 min-h-0"
+                    className="summary-field-group rounded-lg p-1.5 transition-all backdrop-blur-md border border-border/50 dark:border-white/10 hover:border-border dark:hover:border-white/20 min-h-0"
                     style={{
-                      borderLeft: `2px solid ${field.color}`,
+                      borderLeft: `3px solid ${field.color}`,
                       backgroundColor: field.bgColor,
                       boxShadow: 'inset 0 1px 1px 0 rgba(0, 0, 0, 0.05)',
                     }}
                   >
-                    <div className="flex items-center justify-between mb-0.5">
+                    <div className="flex items-center justify-between mb-1">
                       <div 
-                        className="text-xs font-extrabold uppercase tracking-wider leading-tight"
+                        className="text-[10px] font-extrabold uppercase tracking-widest leading-tight"
                         style={{ 
                           color: field.color,
-                          fontWeight: 800,
-                          letterSpacing: '0.05em'
+                          fontWeight: 900,
                         }}
                       >
                         {field.label}
@@ -173,9 +172,8 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
                             e.stopPropagation();
                             toggleFieldExpansion(field.key);
                           }}
-                          className="text-xs px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors flex items-center gap-0.5"
+                          className="text-[10px] px-1 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors flex items-center gap-0.5"
                           style={{ color: field.color }}
-                          title={isExpanded ? 'Show truncated' : 'Show full text'}
                         >
                           {isExpanded ? (
                             <><ChevronUp className="w-3 h-3" /> Less</>
@@ -185,7 +183,7 @@ const SummaryCard = forwardRef<HTMLDivElement, SummaryCardProps>(({
                         </button>
                       )}
                     </div>
-                    <div className="text-xs text-foreground leading-relaxed font-medium break-words" style={{ fontWeight: 500 }}>
+                    <div className="text-xs text-foreground leading-relaxed font-semibold break-words">
                       <DiffGlowText 
                         oldText={prevDisplayValue} 
                         newText={displayValue} 
